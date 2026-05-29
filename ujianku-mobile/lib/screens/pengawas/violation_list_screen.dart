@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../config/theme.dart';
 import '../../providers/proctor_provider.dart';
 import '../../models/violation.dart';
-import '../../models/proctor_session.dart';
 import '../../widgets/custom_button.dart';
 
 /// Halaman daftar pelanggaran — PRO-MAX UI/UX
@@ -372,7 +371,7 @@ class _ViolationListScreenState extends State<ViolationListScreen> {
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
-                    value: _selectedSessionId,
+                    initialValue: _selectedSessionId,
                     decoration: const InputDecoration(
                       hintText: 'Semua sesi',
                       prefixIcon: Icon(Icons.assignment_outlined),

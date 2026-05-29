@@ -14,7 +14,7 @@ on:
         default: 'release'
 
 env:
-  FLUTTER_VERSION: '3.27.1'
+  FLUTTER_VERSION: '3.44.0'
   JAVA_VERSION: '17'
   WORKING_DIR: ujianku-mobile
 
@@ -69,7 +69,7 @@ jobs:
             gradle-${{ runner.os }}-
 
       - name: Decode Android signing key
-        if: github.event.inputs.build_type == 'release' || github.event.inputs.build_type == ''
+        if: (github.event.inputs.build_type == 'release' || github.event.inputs.build_type == '') && secrets.KEYSTORE_BASE64 != ''
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > ${{ env.WORKING_DIR }}/android/app/upload-keystore.jks
           echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> ${{ env.WORKING_DIR }}/android/key.properties

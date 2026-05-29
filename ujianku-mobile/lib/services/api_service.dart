@@ -234,5 +234,22 @@ class ApiResponse {
   dynamic get body => data?['data'];
 
   /// Mendapatkan daftar dari respons
-  List<dynamic>? get listBody => data?['data'] as List<dynamic>?;
+  List<dynamic>? get listBody {
+    final d = data?['data'];
+    if (d is List) return d;
+    if (d is Map<String, dynamic>) {
+      // Paginated response: { data: [...], pagination: {...} }
+      return d['data'] as List<dynamic>?;
+    }
+    return null;
+  }
+
+  /// Mendapatkan data pagination dari respons
+  Map<String, dynamic>? get pagination {
+    final d = data?['data'];
+    if (d is Map<String, dynamic>) {
+      return d['pagination'] as Map<String, dynamic>?;
+    }
+    return null;
+  }
 }

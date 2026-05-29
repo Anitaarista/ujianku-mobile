@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../config/theme.dart';
 import '../../providers/proctor_provider.dart';
+import '../../models/proctor_session.dart';
 import '../../utils/helpers.dart';
 import '../../widgets/custom_button.dart';
 
@@ -20,11 +23,15 @@ class _ReportScreenState extends State<ReportScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.sessionId.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.read<ProctorProvider>().loadSessionReport(widget.sessionId);
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final proctor = context.read<ProctorProvider>();
+      if (widget.sessionId.isNotEmpty) {
+        proctor.loadSessionReport(widget.sessionId);
+      } else {
+        // Load sessions so we can list completed ones for the user to pick
+        proctor.loadSessions();
+      }
+    });
   }
 
   @override
@@ -54,7 +61,7 @@ class _ReportScreenState extends State<ReportScreen> {
         ],
       ),
       body: widget.sessionId.isEmpty
-          ? _buildNoSession()
+          ? _buildSessionPicker(proctorProvider)
           : proctorProvider.isLoading
               ? const Center(
                   child: CircularProgressIndicator(color: AppTheme.primary))
@@ -64,39 +71,79 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  Widget _buildNoSession() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.assessment_outlined,
-                size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Pilih sesi untuk melihat laporan',
-              style: TextStyle(
-                  color: Colors.grey[700],
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Anda dapat melihat laporan sesi yang sudah selesai',
-              style: TextStyle(color: Colors.grey[500], fontSize: 13),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            CustomButton(
-              text: 'Lihat Jadwal',
-              variant: CustomButtonVariant.outline,
-              onPressed: () => context.go('/pengawas'),
-            ),
-          ],
+  /// When no sessionId is provided, show a list of completed sessions the
+  /// pengawas can pick from.
+  Widget _buildSessionPicker(ProctorProvider proctorProvider) {
+    if (proctorProvider.isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppTheme.primary),
+      );
+    }
+
+    final completedSessions = proctorProvider.sessions
+        .where((s) => s.isCompleted)
+        .toList();
+
+    if (completedSessions.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.assessment_outlined,
+                  size: 64, color: Colors.grey[400]),
+              const SizedBox(height: 16),
+              Text(
+                'Belum ada sesi yang selesai',
+                style: TextStyle(
+                    color: Colors.grey[700],
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Laporan akan tersedia setelah sesi ujian selesai',
+                style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              CustomButton(
+                text: 'Lihat Jadwal',
+                variant: CustomButtonVariant.outline,
+                onPressed: () => context.go('/pengawas'),
+              ),
+            ],
+          ),
         ),
-      ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const Text(
+          'Pilih Sesi untuk Laporan',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF1A1A2E),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Pilih sesi ujian yang sudah selesai untuk melihat laporannya',
+          style: TextStyle(color: Colors.grey[600], fontSize: 13),
+        ),
+        const SizedBox(height: 16),
+        ...completedSessions.map((session) => _ReportSessionCard(
+          session: session,
+          onTap: () => context.go(
+            '/pengawas/sessions/${session.id}/report',
+          ),
+        )),
+      ],
     );
   }
 
@@ -587,8 +634,8 @@ class _ReportScreenState extends State<ReportScreen> {
 
           if (widget.sessionId.isNotEmpty) ...[
             CustomButton(
-              text: 'Ekspor Laporan PDF',
-              icon: Icons.picture_as_pdf,
+              text: 'Salin Laporan',
+              icon: Icons.copy,
               variant: CustomButtonVariant.outline,
               isFullWidth: true,
               onPressed: _exportPdf,
@@ -608,22 +655,90 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
+  String _buildReportSummaryText() {
+    final report = context.read<ProctorProvider>().report;
+    if (report == null) return 'Laporan belum tersedia.';
+
+    final totalStudents = report['total_students'] as int? ?? 0;
+    final completedStudents = report['completed_students'] as int? ?? 0;
+    final activeStudents = report['active_students'] as int? ?? 0;
+    final disqualifiedStudents = report['disqualified_students'] as int? ?? 0;
+    final totalViolations = report['total_violations'] as int? ?? 0;
+    final completionRate = report['completion_rate'] as double? ?? 0.0;
+    final examTitle = report['exam_title'] as String? ?? 'Ujian';
+    final subject = report['subject'] as String? ?? '';
+    final className = report['class_name'] as String? ?? '';
+
+    final violationBreakdown =
+        report['violation_breakdown'] as Map<String, dynamic>? ?? {};
+    final studentResults =
+        report['student_results'] as List<dynamic>? ?? [];
+
+    final buffer = StringBuffer();
+    buffer.writeln('═══════════════════════════════════════');
+    buffer.writeln('  LAPORAN SESI UJIAN - UjianKu');
+    buffer.writeln('═══════════════════════════════════════');
+    buffer.writeln();
+    buffer.writeln('Ujian: $examTitle');
+    buffer.writeln('Mata Pelajaran: $subject');
+    buffer.writeln('Kelas: $className');
+    buffer.writeln();
+    buffer.writeln('── Statistik ──────────────────────────');
+    buffer.writeln('Total Siswa: $totalStudents');
+    buffer.writeln('Selesai: $completedStudents');
+    buffer.writeln('Aktif: $activeStudents');
+    buffer.writeln('Diskualifikasi: $disqualifiedStudents');
+    buffer.writeln('Tingkat Penyelesaian: ${completionRate.toStringAsFixed(1)}%');
+    buffer.writeln('Total Pelanggaran: $totalViolations');
+    buffer.writeln();
+
+    if (violationBreakdown.isNotEmpty) {
+      buffer.writeln('── Rincian Pelanggaran ────────────────');
+      for (final entry in violationBreakdown.entries) {
+        final count = entry.value is int
+            ? entry.value as int
+            : (entry.value as double?)?.toInt() ?? 0;
+        buffer.writeln('${_getViolationTypeLabel(entry.key)}: $count');
+      }
+      buffer.writeln();
+    }
+
+    if (studentResults.isNotEmpty) {
+      buffer.writeln('── Hasil Siswa ────────────────────────');
+      for (final item in studentResults) {
+        final data = item as Map<String, dynamic>;
+        final name = data['name'] as String? ?? '-';
+        final score = data['score'] as double? ??
+            (data['score'] as int?)?.toDouble() ?? 0;
+        final status = data['status'] as String? ?? '-';
+        final violationCount = data['violation_count'] as int? ?? 0;
+        buffer.writeln('$name | Skor: ${score.toStringAsFixed(0)} | Status: $status | Pelanggaran: $violationCount');
+      }
+    }
+
+    buffer.writeln();
+    buffer.writeln('═══════════════════════════════════════');
+    buffer.writeln('Dibuat dari aplikasi UjianKu');
+
+    return buffer.toString();
+  }
+
   void _exportPdf() {
+    final summary = _buildReportSummaryText();
+    Clipboard.setData(ClipboardData(text: summary));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Fitur ekspor PDF segera hadir'),
-        backgroundColor: Colors.orange[700],
+        content: const Text('Laporan berhasil disalin ke clipboard'),
+        backgroundColor: AppTheme.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
 
   void _shareReport() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Fitur bagikan laporan segera hadir'),
-        backgroundColor: Colors.orange[700],
-      ),
-    );
+    final summary = _buildReportSummaryText();
+    Share.share(summary, subject: 'Laporan Sesi Ujian - UjianKu');
   }
 
   Future<void> _endSession() async {
@@ -808,6 +923,128 @@ class _TableDataCell extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       child: child,
+    );
+  }
+}
+
+/// Card for a completed session in the session picker list
+class _ReportSessionCard extends StatelessWidget {
+  final ProctorSession session;
+  final VoidCallback onTap;
+
+  const _ReportSessionCard({required this.session, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[200]!),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppTheme.secondary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.check_circle,
+                    color: AppTheme.secondary,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        session.examTitle,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          color: Color(0xFF1A1A2E),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${session.subject} - ${session.className}',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.people_outline,
+                              size: 14, color: Colors.grey[500]),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${session.totalStudents} siswa',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Icon(Icons.schedule,
+                              size: 14, color: Colors.grey[500]),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${session.startTimeFormatted} - ${session.endTimeFormatted}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppTheme.secondary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'Selesai',
+                    style: TextStyle(
+                      color: AppTheme.secondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

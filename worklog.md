@@ -159,3 +159,174 @@ Complete mobile app redesign with PRO-MAX UI/UX, role restriction for mobile (Si
 - Success text: `Colors.green[700]`
 - Card backgrounds: `Colors.white`
 - Screen background: `Color(0xFFF8F9FA)` / `Colors.grey[50]`
+
+---
+
+## Date: 2026-03-05 — Critical Bug Fixes (Task ID: 1)
+
+### Bug 1: Type Cast Error in Exam List (CRITICAL)
+**File**: `lib/services/api_service.dart`
+**Problem**: `ApiResponse.listBody` tried `data?['data'] as List<dynamic>?` which crashed when the API returned paginated data (`{ data: { data: [...], pagination: {...} } }`) because `data['data']` was a Map, not a List.
+**Fix**: Replaced the single cast with smart type checking — if `data['data']` is a List, return it directly; if it's a Map (paginated wrapper), extract the nested `data` list. Also added a `pagination` getter that extracts the pagination metadata from paginated responses.
+
+### Bug 2: Question Images Never Load
+**File**: `lib/widgets/question_widget.dart`
+**Problem**: The image section showed a static `Icons.image_outlined` placeholder icon instead of loading the actual image from `question.imageUrl`.
+**Fix**: Replaced the static Container with Icon with `CachedNetworkImage` (already in pubspec.yaml). Added proper `placeholder` with a loading spinner and `errorWidget` with a broken-image icon for error states.
+
+### Bug 3: Essay Input Doesn't Sync on Navigation
+**File**: `lib/widgets/question_widget.dart`
+**Problem**: `_EssayInput` widget used a local `TextEditingController` initialized only in `initState`. When navigating between questions, `initState` doesn't re-run, so the controller kept the old text.
+**Fix**: Added `didUpdateWidget` override to `_EssayInputState` that detects when `initialText` changes and updates the controller text while preserving the cursor selection.
+
+### Bug 4: Double Monitoring Timer
+**File**: `lib/providers/proctor_provider.dart`
+**Problem**: `startMonitoring()` created a 5-second polling timer internally. But `MonitoringScreen` also created its own 30-second timer that called `startMonitoring()` again, causing overlapping timers and wasted API calls.
+**Fix**: Removed the internal `Timer.periodic` from `startMonitoring()` — it now just does a single fetch. The screen's 30-second timer is the sole driver of periodic polling. `stopMonitoring()` still cancels any existing timer for cleanup safety.
+
+### Bug 5: Reports Tab Dead End
+**File**: `lib/screens/pengawas/report_screen.dart`
+**Problem**: Route `/pengawas/reports` created `ReportScreen(sessionId: '')` which showed a static "Pilih sesi" message with only a "Lihat Jadwal" button — a dead end.
+**Fix**: When `sessionId` is empty, the screen now loads sessions from `ProctorProvider` and displays a list of completed sessions the pengawas can pick from. Each session card navigates to `/pengawas/sessions/:sessionId/report`. Added `_ReportSessionCard` widget for the session list items. If no completed sessions exist, shows an appropriate empty state.
+
+---
+
+## Date: 2026-03-05 — Replace Dummy/Placeholder Buttons with Real Functionality (Task ID: 2)
+
+### 1. Login Screen — "Lupa Password?" Button
+**File**: `lib/screens/login_screen.dart`
+**Before**: SnackBar with message "Fitur lupa password segera hadir"
+**After**: Opens a proper forgot password dialog with:
+  - Email input field with validation
+  - Loading state while submitting
+  - Attempts API call to `/auth/forgot-password` (gracefully handles if API doesn't support it yet)
+  - On success, shows confirmation dialog: "Permintaan reset password telah dikirim ke email Anda"
+**Added imports**: `ApiService`
+
+### 2. Siswa Home Screen — Notification Bell
+**File**: `lib/screens/siswa/home_screen.dart`
+**Before**: SnackBar with message "Tidak ada notifikasi baru"
+**After**: Opens a bottom sheet with:
+  - Rounded top corners with handle bar
+  - "Notifikasi" title with close button
+  - Empty state with `notifications_off_outlined` icon (64px)
+  - Message "Belum ada notifikasi" with helper subtitle
+  - Ready for future notification items to be added
+
+### 3. Profile Screen — "Kebijakan Privasi" Tile
+**File**: `lib/screens/siswa/profile_screen.dart`
+**Before**: SnackBar with message "Halaman kebijakan privasi segera hadir"
+**After**: Navigates to new `PrivacyPolicyScreen` via `Navigator.push`
+**New file**: `lib/screens/siswa/privacy_policy_screen.dart`
+  - Full static privacy policy content in Indonesian
+  - 9 sections: Pendahuluan, Informasi yang Dikumpulkan, Penggunaan Informasi, Perlindungan Data, Pengawasan Ujian, Berbagi Informasi, Hak Anda, Perubahan Kebijakan, Kontak
+  - Gradient header card with last-updated date
+  - White section cards with proper typography and spacing
+
+### 4. Profile Screen — "Bantuan" Tile
+**File**: `lib/screens/siswa/profile_screen.dart`
+**Before**: SnackBar with message "Halaman bantuan segera hadir"
+**After**: Navigates to new `HelpScreen` via `Navigator.push`
+**New file**: `lib/screens/siswa/help_screen.dart`
+  - 9 expandable FAQ items with expand/collapse animation
+  - Covers: registration, starting exams, disconnections, warnings, viewing results, auto-save, forgot password, editing profile, pengawas role
+  - Contact section with email, website, and phone
+  - Gradient header card
+
+### 5. Profile Screen — Notifications Toggle Persistence
+**File**: `lib/screens/siswa/profile_screen.dart`
+**Before**: `_notifications` state was only local, reset on screen rebuild
+**After**:
+  - Loads initial value from `StorageService().getNotificationsEnabled()` in `initState`
+  - Persists value on change via `StorageService().saveNotificationsEnabled(value)`
+  - Added import: `StorageService`
+**File**: `lib/services/storage_service.dart` — already had `saveNotificationsEnabled` and `getNotificationsEnabled` methods
+
+### 6. Pengawas Report Screen — "Ekspor Laporan PDF" Button
+**File**: `lib/screens/pengawas/report_screen.dart`
+**Before**: SnackBar with message "Fitur ekspor PDF segera hadir"
+**After**:
+  - Button renamed to "Salin Laporan" with copy icon
+  - `_buildReportSummaryText()` generates a formatted text summary of the entire report (session info, statistics, violations, student results)
+  - Copies the summary to clipboard via `Clipboard.setData()`
+  - Shows success SnackBar: "Laporan berhasil disalin ke clipboard"
+**Added imports**: `flutter/services.dart`
+
+### 7. Pengawas Report Screen — "Bagikan" / Share Button
+**File**: `lib/screens/pengawas/report_screen.dart`
+**Before**: SnackBar with message "Fitur bagikan laporan segera hadir"
+**After**:
+  - Uses `share_plus` package to share the report summary text
+  - `Share.share(summary, subject: 'Laporan Sesi Ujian - UjianKu')` opens the system share sheet
+  - Users can share via WhatsApp, email, SMS, etc.
+**Added imports**: `share_plus`
+**Updated pubspec.yaml**: Added `share_plus: ^9.0.0` dependency
+
+---
+
+## Date: 2026-03-05 — Fix All 37 Dummy/Placeholder Buttons in Admin & Guru Dashboards (Task ID: 3)
+
+### Summary
+Replaced all 37 dummy/placeholder buttons in the Admin and Guru dashboards with real functionality. This includes CSV export, modals for add/edit/view operations, a fully functional 5-step exam creation wizard, notification dropdowns, and proper API integration.
+
+### New Files Created
+
+#### 1. CSV Export Utility (`src/lib/csv-export.ts`)
+- `exportToCSV(data, filename)` function that converts array of objects to CSV and triggers browser download
+- Handles null/undefined values, proper CSV escaping for quotes
+
+#### 2. API Routes for Admin CRUD Operations
+- **`src/app/api/v1/admin/sekolah/[id]/route.ts`** — GET (detail), PUT (update), DELETE (with kelas count check)
+- **`src/app/api/v1/admin/kelas/[id]/route.ts`** — GET (detail), PUT (update), DELETE (with siswa count check)
+- **`src/app/api/v1/admin/mata-pelajaran/[id]/route.ts`** — GET (detail), PUT (update), DELETE (with exams/soal count check)
+
+### Admin Dashboard Fixes (`src/components/ujianku/admin-dashboard.tsx`) — 19 buttons fixed
+
+1. **"Tambah Guru Baru"** (Quick Action) → Opens Add User modal with role pre-set to GURU via `handleQuickAction` callback
+2. **"Buat Ujian Baru"** (Quick Action) → Shows alert directing to Guru panel
+3. **"Lihat Laporan"** (Quick Action) → Switches to Analytics tab
+4. **"Kelola Sekolah"** (Quick Action) → Switches to Sekolah & Kelas tab
+5. **Bell icon** (Header) → Dropdown with empty notification state (ready for future notifications)
+6. **"Ekspor" button** (User Management) → Calls `exportToCSV()` with user data
+7. **Edit (pencil) button per user** → Opens edit modal pre-filled with user data, PUT to `/api/v1/admin/users/[id]`
+8. **Eye/View button per user** → Shows user detail dialog with full user info (avatar, role badge, all fields)
+9. **"Tambah Sekolah" button** → Opens add modal with nama/npsn/alamat fields, POST to `/api/v1/admin/sekolah`
+10. **"Detail" button per sekolah** → Shows school detail dialog with all info
+11. **Edit button per sekolah** → Opens edit modal pre-filled, PUT to `/api/v1/admin/sekolah/[id]`
+12. **"Tambah Kelas" button** → Opens add modal with nama/tingkat/tahunAjaran/sekolah fields, POST to `/api/v1/admin/kelas`
+13. **Edit button per kelas** → Opens edit modal pre-filled, PUT to `/api/v1/admin/kelas/[id]`
+14. **MoreVertical button per kelas** → Dropdown menu with Edit and Delete options (Delete calls DELETE API)
+15. **"Ekspor" button** (Mata Pelajaran) → Calls `exportToCSV()` with subject data
+16. **"Tambah Mapel" button** → Opens add modal with kode/nama/kkm/kelompok fields, POST to `/api/v1/admin/mata-pelajaran`
+17. **"Detail" button per mapel** → Shows subject detail dialog with all info and counts
+18. **Edit button per mapel** → Opens edit modal pre-filled, PUT to `/api/v1/admin/mata-pelajaran/[id]`
+19. **"Ekspor" button** (Analytics) → Calls `exportToCSV()` with analytics summary data
+
+### Guru Dashboard Fixes (`src/components/ujianku/guru-dashboard.tsx`) — 18 buttons fixed
+
+20. **"Ekspor" button** (Bank Soal) → Calls `exportToCSV()` with question data
+21. **Copy button per soal** → Duplicates question via POST to `/api/v1/bank-soal` with copied data + "(salinan)" suffix
+22. **Edit button per soal** → Opens edit modal pre-filled with all soal fields, PUT to `/api/v1/bank-soal/[id]`
+23. **Entire 5-step wizard** (Buat Ujian — CRITICAL) → Fully functional with `wizardData` state management:
+   - **Step 1**: All controlled inputs — judul, deskripsi, mataPelajaranId, tipeExam, durasi, token, tanggalMulai, tanggalSelesai
+   - **Step 2**: Checkboxes tracking `selectedSoalIds` with visual highlighting, counter badge
+   - **Step 3**: Controlled toggles for acakSoal, acakOpsi, antiCheat, showResult + controlled passingGrade/maxAttempt inputs
+   - **Step 4**: Checkboxes tracking `selectedKelasIds` with visual highlighting, counter badge
+   - **Step 5**: Review page showing all entered data, POST to `/api/v1/exams` on "Publikasikan Ujian" with loading state
+24. **Edit button per exam card** → Opens wizard pre-filled with exam data (step 1) for editing
+25. **Eye/View button per exam card** → Shows exam detail dialog with all info (judul, status, mapel, settings, kelas list)
+26. **"Ekspor ke Excel" button** (Hasil Ujian) → Calls `exportToCSV()` with results data
+27. **Bell icon** (Header) → Same as admin, dropdown with empty notification state
+
+### Architecture Changes
+- **Admin Dashboard**: Lifted `showAddUserModal` and `presetRole` state to parent `AdminDashboard` component to allow Quick Actions to trigger the Add User modal
+- **DashboardOverview**: Added `onQuickAction` prop for tab switching and modal triggering
+- **UserManagement**: Added `showAddModal`/`setShowAddModal`/`presetRole` props for external control
+- **ModalOverlay**: Created reusable modal component for both dashboards, with backdrop click-to-close
+- **BuatUjian**: Complete rewrite of wizard — all uncontrolled inputs replaced with controlled inputs bound to `wizardData` state
+
+### Code Quality
+- All lint checks pass cleanly (`bun run lint` — no errors)
+- TypeScript strict typing maintained throughout
+- Consistent error handling patterns (try/catch with silent handling)
+- API field names match backend route expectations

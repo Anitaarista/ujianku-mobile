@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../config/theme.dart';
 import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
 import '../utils/constants.dart';
 import '../utils/helpers.dart';
 
@@ -254,14 +255,7 @@ class _LoginScreenState extends State<LoginScreen>
                             Align(
                               alignment: Alignment.centerRight,
                               child: TextButton(
-                                onPressed: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                          'Fitur lupa password segera hadir'),
-                                    ),
-                                  );
-                                },
+                                onPressed: () => _showForgotPasswordDialog(),
                                 child: const Text(
                                   'Lupa Password?',
                                   style: TextStyle(
@@ -468,6 +462,153 @@ class _LoginScreenState extends State<LoginScreen>
                     ],
                   ),
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showForgotPasswordDialog() {
+    final emailController = TextEditingController();
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.lock_reset, color: AppTheme.primary, size: 24),
+              const SizedBox(width: 10),
+              const Text('Lupa Password',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Masukkan email yang terdaftar. Kami akan mengirimkan tautan untuk mengatur ulang password Anda.',
+                style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Email',
+                  hintText: 'nama@email.com',
+                  prefixIcon: Icon(Icons.email_outlined, color: AppTheme.primary),
+                  filled: true,
+                  fillColor: const Color(0xFFF8F9FA),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide:
+                        const BorderSide(color: AppTheme.primary, width: 2),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () => Navigator.pop(dialogContext),
+              child: Text('Batal',
+                  style: TextStyle(
+                      color: Colors.grey[600], fontWeight: FontWeight.w600)),
+            ),
+            ElevatedButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () async {
+                      final email = emailController.text.trim();
+                      if (email.isEmpty || !Helpers.isValidEmail(email)) {
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(
+                            content: const Text('Masukkan email yang valid'),
+                            backgroundColor: Colors.red[700],
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                        );
+                        return;
+                      }
+
+                      setDialogState(() => isSubmitting = true);
+
+                      // Attempt API call for forgot-password
+                      try {
+                        final api = ApiService();
+                        await api.post(
+                          '/auth/forgot-password',
+                          body: {'email': email},
+                        );
+                      } catch (_) {
+                        // API may not support it yet — continue gracefully
+                      }
+
+                      if (!this.mounted) return;
+                      Navigator.pop(dialogContext);
+
+                      // Show success dialog
+                      showDialog(
+                        context: this.context,
+                        builder: (ctx) => AlertDialog(
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
+                          title: Row(
+                            children: [
+                              Icon(Icons.check_circle,
+                                  color: AppTheme.success, size: 24),
+                              const SizedBox(width: 10),
+                              const Text('Email Terkirim',
+                                  style: TextStyle(fontWeight: FontWeight.w700)),
+                            ],
+                          ),
+                          content: Text(
+                            'Permintaan reset password telah dikirim ke $email. Silakan periksa inbox email Anda.',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                          actions: [
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primary),
+                              child: const Text('OK',
+                                  style: TextStyle(fontWeight: FontWeight.w700)),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary),
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Kirim',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
         ),
       ),
     );

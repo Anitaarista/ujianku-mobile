@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../config/theme.dart';
 import '../models/question.dart';
 
@@ -81,16 +82,33 @@ class QuestionWidget extends StatelessWidget {
           if (question.imageUrl != null && question.imageUrl!.isNotEmpty) ...[
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Container(
+              child: CachedNetworkImage(
+                imageUrl: question.imageUrl!,
                 width: double.infinity,
                 height: 200,
-                decoration: BoxDecoration(
-                  color: AppTheme.background,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.border),
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Container(
+                  width: double.infinity,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    color: AppTheme.background,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Center(
+                    child: CircularProgressIndicator(color: AppTheme.primary),
+                  ),
                 ),
-                child: const Center(
-                  child: Icon(Icons.image_outlined, size: 48, color: AppTheme.textHint),
+                errorWidget: (context, url, error) => Container(
+                  width: double.infinity,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    color: AppTheme.background,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.broken_image_outlined, size: 48, color: AppTheme.textHint),
+                  ),
                 ),
               ),
             ),
@@ -257,6 +275,18 @@ class _EssayInputState extends State<_EssayInput> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialText ?? '');
+  }
+
+  @override
+  void didUpdateWidget(covariant _EssayInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialText != oldWidget.initialText) {
+      final sel = _controller.selection;
+      _controller.text = widget.initialText ?? '';
+      if (sel.start >= 0 && sel.start <= _controller.text.length) {
+        _controller.selection = sel;
+      }
+    }
   }
 
   @override

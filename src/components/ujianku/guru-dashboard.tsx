@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, BookOpen, FileText, ClipboardCheck, Award,
@@ -23,6 +23,7 @@ import {
 import {
   gradeDistributionData, getStatusColor, getDifficultyColor, formatDuration
 } from './mock-data'
+import { exportToCSV } from '@/lib/csv-export'
 
 type GuruTab = 'dashboard' | 'bank-soal' | 'buat-ujian' | 'hasil-ujian' | 'nilai'
 
@@ -114,9 +115,35 @@ function EmptyState({ message, icon: Icon }: { message: string; icon?: React.Ele
   )
 }
 
+// ==================== MODAL OVERLAY ====================
+function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <AnimatePresence>
+      <motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+        <motion.div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl" initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onClick={e => e.stopPropagation()}>
+          {children}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
 export function GuruDashboard({ onBack, user, token }: GuruDashboardProps) {
   const [activeTab, setActiveTab] = useState<GuruTab>('dashboard')
   const [searchQuery, setSearchQuery] = useState('')
+  // FIX #27: Notification bell dropdown
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false)
+  const notifRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setShowNotifDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -178,19 +205,34 @@ export function GuruDashboard({ onBack, user, token }: GuruDashboardProps) {
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <Input placeholder="Cari..." className="pl-9 w-64 h-9 bg-gray-50 border-gray-200" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
-            <button className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors">
-              <Bell className="w-5 h-5 text-gray-600" />
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
-            </button>
+            {/* FIX #27: Bell icon with dropdown */}
+            <div className="relative" ref={notifRef}>
+              <button className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors" onClick={() => setShowNotifDropdown(!showNotifDropdown)}>
+                <Bell className="w-5 h-5 text-gray-600" />
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+              </button>
+              {showNotifDropdown && (
+                <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden">
+                  <div className="p-4 border-b border-gray-100">
+                    <h3 className="text-sm font-bold text-gray-900">Notifikasi</h3>
+                  </div>
+                  <div className="p-8 text-center">
+                    <Bell className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                    <p className="text-sm text-gray-500 font-medium">Belum ada notifikasi</p>
+                    <p className="text-xs text-gray-400 mt-1">Notifikasi baru akan muncul di sini</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
         <div className="flex-1 overflow-auto p-6">
-          {activeTab === 'dashboard' && <GuruOverview token={token} />}
-          {activeTab === 'bank-soal' && <BankSoal token={token} searchQuery={searchQuery} />}
-          {activeTab === 'buat-ujian' && <BuatUjian token={token} />}
-          {activeTab === 'hasil-ujian' && <HasilUjian token={token} />}
-          {activeTab === 'nilai' && <NilaiRapor token={token} />}
+          {activeTab === 'dashboard' && <GuruOverview token={token ?? null} />}
+          {activeTab === 'bank-soal' && <BankSoal token={token ?? null} searchQuery={searchQuery} />}
+          {activeTab === 'buat-ujian' && <BuatUjian token={token ?? null} />}
+          {activeTab === 'hasil-ujian' && <HasilUjian token={token ?? null} />}
+          {activeTab === 'nilai' && <NilaiRapor token={token ?? null} />}
         </div>
       </main>
     </div>
@@ -334,6 +376,15 @@ function BankSoal({ token, searchQuery }: { token: string | null; searchQuery: s
     jawabanBenar: 'A', pembahasan: '', poin: 2, isPublic: false
   })
 
+  // FIX #22: Edit soal state
+  const [editSoal, setEditSoal] = useState<ApiBankSoal | null>(null)
+  const [editSoalForm, setEditSoalForm] = useState({
+    mataPelajaranId: '', tipeSoal: 'PILIHAN_GANDA', tingkatKesulitan: 'SEDANG',
+    pertanyaan: '', opsiA: '', opsiB: '', opsiC: '', opsiD: '', opsiE: '',
+    jawabanBenar: 'A', pembahasan: '', poin: 2, isPublic: false
+  })
+  const [editSaving, setEditSaving] = useState(false)
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
@@ -393,6 +444,78 @@ function BankSoal({ token, searchQuery }: { token: string | null; searchQuery: s
     }
   }
 
+  // FIX #21: Copy soal handler
+  const handleCopySoal = async (soal: ApiBankSoal) => {
+    try {
+      const res = await apiFetch('/api/v1/bank-soal', token, {
+        method: 'POST',
+        body: JSON.stringify({
+          mataPelajaranId: soal.mataPelajaranId,
+          tipeSoal: soal.tipeSoal,
+          tingkatKesulitan: soal.tingkatKesulitan,
+          pertanyaan: soal.pertanyaan + ' (salinan)',
+          opsiA: soal.opsiA,
+          opsiB: soal.opsiB,
+          opsiC: soal.opsiC,
+          opsiD: soal.opsiD,
+          opsiE: soal.opsiE,
+          jawabanBenar: soal.jawabanBenar,
+          pembahasan: soal.pembahasan,
+          poin: soal.poin,
+          isPublic: soal.isPublic,
+        }),
+      })
+      if (res.success) fetchData()
+    } catch {
+      // silently handle
+    }
+  }
+
+  // FIX #22: Edit soal handlers
+  const handleOpenEditSoal = (soal: ApiBankSoal) => {
+    setEditSoal(soal)
+    setEditSoalForm({
+      mataPelajaranId: soal.mataPelajaranId, tipeSoal: soal.tipeSoal, tingkatKesulitan: soal.tingkatKesulitan,
+      pertanyaan: soal.pertanyaan, opsiA: soal.opsiA || '', opsiB: soal.opsiB || '', opsiC: soal.opsiC || '',
+      opsiD: soal.opsiD || '', opsiE: soal.opsiE || '', jawabanBenar: soal.jawabanBenar || 'A',
+      pembahasan: soal.pembahasan || '', poin: soal.poin, isPublic: soal.isPublic,
+    })
+  }
+
+  const handleSaveEditSoal = async () => {
+    if (!editSoal) return
+    try {
+      setEditSaving(true)
+      const res = await apiFetch(`/api/v1/bank-soal/${editSoal.id}`, token, {
+        method: 'PUT',
+        body: JSON.stringify(editSoalForm),
+      })
+      if (res.success) {
+        setEditSoal(null)
+        fetchData()
+      }
+    } catch {
+      // silently handle
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  // FIX #20: Export soal to CSV
+  const handleExportSoal = () => {
+    const data = soalList.map(s => ({
+      Pertanyaan: s.pertanyaan,
+      'Mata Pelajaran': s.mataPelajaran?.nama || '-',
+      'Tipe Soal': s.tipeSoal,
+      'Tingkat Kesulitan': s.tingkatKesulitan,
+      Poin: s.poin,
+      'Jawaban Benar': s.jawabanBenar || '-',
+      Publik: s.isPublic ? 'Ya' : 'Tidak',
+      'Dibuat Oleh': s.guru?.name || '-',
+    }))
+    exportToCSV(data, 'bank-soal')
+  }
+
   if (loading) return <LoadingSkeleton />
 
   const totalSoal = summary?.totalQuestions ?? soalList.length
@@ -418,7 +541,8 @@ function BankSoal({ token, searchQuery }: { token: string | null; searchQuery: s
           </select>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="text-gray-700 border-gray-200"><Download className="w-4 h-4 mr-2" />Ekspor</Button>
+          {/* FIX #20: Export CSV */}
+          <Button variant="outline" size="sm" className="text-gray-700 border-gray-200" onClick={handleExportSoal}><Download className="w-4 h-4 mr-2" />Ekspor</Button>
           <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200" onClick={() => setShowAddModal(true)}>
             <Plus className="w-4 h-4 mr-2" />Tambah Soal
           </Button>
@@ -473,8 +597,10 @@ function BankSoal({ token, searchQuery }: { token: string | null; searchQuery: s
                   <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                     <span className="text-xs font-medium text-gray-500">Oleh: {soal.guru?.name || '-'}</span>
                     <div className="flex items-center gap-1">
-                      <button className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"><Copy className="w-3.5 h-3.5 text-gray-500" /></button>
-                      <button className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"><Edit className="w-3.5 h-3.5 text-gray-500" /></button>
+                      {/* FIX #21: Copy button */}
+                      <button onClick={() => handleCopySoal(soal)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Duplikat soal"><Copy className="w-3.5 h-3.5 text-gray-500" /></button>
+                      {/* FIX #22: Edit button */}
+                      <button onClick={() => handleOpenEditSoal(soal)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Edit soal"><Edit className="w-3.5 h-3.5 text-gray-500" /></button>
                       <button onClick={() => handleDeleteSoal(soal.id)} className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5 text-red-500" /></button>
                     </div>
                   </div>
@@ -486,92 +612,166 @@ function BankSoal({ token, searchQuery }: { token: string | null; searchQuery: s
       </div>
 
       {/* Add Soal Modal */}
-      <AnimatePresence>
-        {showAddModal && (
-          <motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <motion.div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl" initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}>
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-gray-900">Tambah Soal Baru</h2>
-                <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><X className="w-4 h-4 text-gray-500" /></button>
+      {showAddModal && (
+        <ModalOverlay onClose={() => setShowAddModal(false)}>
+          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-gray-900">Tambah Soal Baru</h2>
+            <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><X className="w-4 h-4 text-gray-500" /></button>
+          </div>
+          <div className="p-6 space-y-5">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Mata Pelajaran</label>
+                <select className="w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900" value={newSoal.mataPelajaranId} onChange={(e) => setNewSoal({ ...newSoal, mataPelajaranId: e.target.value })}>
+                  <option value="">Pilih Mapel</option>
+                  {mapelList.map(m => <option key={m.id} value={m.id}>{m.nama}</option>)}
+                </select>
               </div>
-              <div className="p-6 space-y-5">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Mata Pelajaran</label>
-                    <select className="w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900" value={newSoal.mataPelajaranId} onChange={(e) => setNewSoal({ ...newSoal, mataPelajaranId: e.target.value })}>
-                      <option value="">Pilih Mapel</option>
-                      {mapelList.map(m => <option key={m.id} value={m.id}>{m.nama}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Tipe Soal</label>
-                    <select className="w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900" value={newSoal.tipeSoal} onChange={(e) => setNewSoal({ ...newSoal, tipeSoal: e.target.value })}>
-                      <option value="PILIHAN_GANDA">Pilihan Ganda</option>
-                      <option value="ESSAY">Essay</option>
-                      <option value="BENAR_SALAH">Benar/Salah</option>
-                      <option value="JAWABAN_SINGKAT">Jawaban Singkat</option>
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Tingkat Kesulitan</label>
-                  <div className="flex gap-2">
-                    {(['MUDAH', 'SEDANG', 'SULIT'] as const).map((d) => (
-                      <button key={d} onClick={() => setNewSoal({ ...newSoal, tingkatKesulitan: d })} className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${
-                        newSoal.tingkatKesulitan === d ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                      }`}>{d === 'MUDAH' ? 'Mudah' : d === 'SEDANG' ? 'Sedang' : 'Sulit'}</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Pertanyaan</label>
-                  <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm min-h-[100px] focus:border-emerald-400 focus:ring-emerald-400/20" placeholder="Tulis pertanyaan..." value={newSoal.pertanyaan} onChange={(e) => setNewSoal({ ...newSoal, pertanyaan: e.target.value })} />
-                </div>
-                {newSoal.tipeSoal === 'PILIHAN_GANDA' && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700 block">Opsi Jawaban</label>
-                    {(['A', 'B', 'C', 'D'] as const).map((opt) => (
-                      <div key={opt} className="flex items-center gap-2">
-                        <input type="radio" name="correct" checked={newSoal.jawabanBenar === opt} onChange={() => setNewSoal({ ...newSoal, jawabanBenar: opt })} className="accent-emerald-600" />
-                        <span className="text-sm font-semibold text-gray-700 w-6">Opsi {opt}:</span>
-                        <Input className="flex-1 h-9" placeholder={`Masukkan opsi ${opt}...`} value={newSoal[`opsi${opt}` as keyof typeof newSoal] as string} onChange={(e) => setNewSoal({ ...newSoal, [`opsi${opt}`]: e.target.value })} />
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div>
-                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Pembahasan</label>
-                  <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm min-h-[80px] focus:border-emerald-400 focus:ring-emerald-400/20" placeholder="Tulis pembahasan..." value={newSoal.pembahasan} onChange={(e) => setNewSoal({ ...newSoal, pembahasan: e.target.value })} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Poin</label>
-                    <Input type="number" value={newSoal.poin} onChange={(e) => setNewSoal({ ...newSoal, poin: parseInt(e.target.value) || 1 })} className="h-9" />
-                  </div>
-                  <div className="flex items-end gap-2">
-                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                      <input type="checkbox" checked={newSoal.isPublic} onChange={(e) => setNewSoal({ ...newSoal, isPublic: e.target.checked })} className="rounded accent-emerald-600" />
-                      Publikasikan soal
-                    </label>
-                  </div>
-                </div>
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Tipe Soal</label>
+                <select className="w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900" value={newSoal.tipeSoal} onChange={(e) => setNewSoal({ ...newSoal, tipeSoal: e.target.value })}>
+                  <option value="PILIHAN_GANDA">Pilihan Ganda</option>
+                  <option value="ESSAY">Essay</option>
+                  <option value="BENAR_SALAH">Benar/Salah</option>
+                  <option value="JAWABAN_SINGKAT">Jawaban Singkat</option>
+                </select>
               </div>
-              <div className="p-6 border-t border-gray-100 flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setShowAddModal(false)} className="text-gray-700 border-gray-200">Batal</Button>
-                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200" onClick={handleAddSoal} disabled={saving}>
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                  Simpan Soal
-                </Button>
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Tingkat Kesulitan</label>
+              <div className="flex gap-2">
+                {(['MUDAH', 'SEDANG', 'SULIT'] as const).map((d) => (
+                  <button key={d} onClick={() => setNewSoal({ ...newSoal, tingkatKesulitan: d })} className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                    newSoal.tingkatKesulitan === d ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}>{d === 'MUDAH' ? 'Mudah' : d === 'SEDANG' ? 'Sedang' : 'Sulit'}</button>
+                ))}
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Pertanyaan</label>
+              <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm min-h-[100px] focus:border-emerald-400 focus:ring-emerald-400/20" placeholder="Tulis pertanyaan..." value={newSoal.pertanyaan} onChange={(e) => setNewSoal({ ...newSoal, pertanyaan: e.target.value })} />
+            </div>
+            {newSoal.tipeSoal === 'PILIHAN_GANDA' && (
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700 block">Opsi Jawaban</label>
+                {(['A', 'B', 'C', 'D'] as const).map((opt) => (
+                  <div key={opt} className="flex items-center gap-2">
+                    <input type="radio" name="correct-add" checked={newSoal.jawabanBenar === opt} onChange={() => setNewSoal({ ...newSoal, jawabanBenar: opt })} className="accent-emerald-600" />
+                    <span className="text-sm font-semibold text-gray-700 w-6">Opsi {opt}:</span>
+                    <Input className="flex-1 h-9" placeholder={`Masukkan opsi ${opt}...`} value={newSoal[`opsi${opt}` as keyof typeof newSoal] as string} onChange={(e) => setNewSoal({ ...newSoal, [`opsi${opt}`]: e.target.value })} />
+                  </div>
+                ))}
+              </div>
+            )}
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Pembahasan</label>
+              <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm min-h-[80px] focus:border-emerald-400 focus:ring-emerald-400/20" placeholder="Tulis pembahasan..." value={newSoal.pembahasan} onChange={(e) => setNewSoal({ ...newSoal, pembahasan: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Poin</label>
+                <Input type="number" value={newSoal.poin} onChange={(e) => setNewSoal({ ...newSoal, poin: parseInt(e.target.value) || 1 })} className="h-9" />
+              </div>
+              <div className="flex items-end gap-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <input type="checkbox" checked={newSoal.isPublic} onChange={(e) => setNewSoal({ ...newSoal, isPublic: e.target.checked })} className="rounded accent-emerald-600" />
+                  Publikasikan soal
+                </label>
+              </div>
+            </div>
+          </div>
+          <div className="p-6 border-t border-gray-100 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowAddModal(false)} className="text-gray-700 border-gray-200">Batal</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200" onClick={handleAddSoal} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Simpan Soal
+            </Button>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* FIX #22: Edit Soal Modal */}
+      {editSoal && (
+        <ModalOverlay onClose={() => setEditSoal(null)}>
+          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-gray-900">Edit Soal</h2>
+            <button onClick={() => setEditSoal(null)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><X className="w-4 h-4 text-gray-500" /></button>
+          </div>
+          <div className="p-6 space-y-5">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Mata Pelajaran</label>
+                <select className="w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900" value={editSoalForm.mataPelajaranId} onChange={(e) => setEditSoalForm({ ...editSoalForm, mataPelajaranId: e.target.value })}>
+                  {mapelList.map(m => <option key={m.id} value={m.id}>{m.nama}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Tipe Soal</label>
+                <select className="w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900" value={editSoalForm.tipeSoal} onChange={(e) => setEditSoalForm({ ...editSoalForm, tipeSoal: e.target.value })}>
+                  <option value="PILIHAN_GANDA">Pilihan Ganda</option>
+                  <option value="ESSAY">Essay</option>
+                  <option value="BENAR_SALAH">Benar/Salah</option>
+                  <option value="JAWABAN_SINGKAT">Jawaban Singkat</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Tingkat Kesulitan</label>
+              <div className="flex gap-2">
+                {(['MUDAH', 'SEDANG', 'SULIT'] as const).map((d) => (
+                  <button key={d} onClick={() => setEditSoalForm({ ...editSoalForm, tingkatKesulitan: d })} className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                    editSoalForm.tingkatKesulitan === d ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}>{d === 'MUDAH' ? 'Mudah' : d === 'SEDANG' ? 'Sedang' : 'Sulit'}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Pertanyaan</label>
+              <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm min-h-[100px]" value={editSoalForm.pertanyaan} onChange={(e) => setEditSoalForm({ ...editSoalForm, pertanyaan: e.target.value })} />
+            </div>
+            {editSoalForm.tipeSoal === 'PILIHAN_GANDA' && (
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-700 block">Opsi Jawaban</label>
+                {(['A', 'B', 'C', 'D'] as const).map((opt) => (
+                  <div key={opt} className="flex items-center gap-2">
+                    <input type="radio" name="correct-edit" checked={editSoalForm.jawabanBenar === opt} onChange={() => setEditSoalForm({ ...editSoalForm, jawabanBenar: opt })} className="accent-emerald-600" />
+                    <span className="text-sm font-semibold text-gray-700 w-6">Opsi {opt}:</span>
+                    <Input className="flex-1 h-9" value={editSoalForm[`opsi${opt}` as keyof typeof editSoalForm] as string} onChange={(e) => setEditSoalForm({ ...editSoalForm, [`opsi${opt}`]: e.target.value })} />
+                  </div>
+                ))}
+              </div>
+            )}
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Pembahasan</label>
+              <textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm min-h-[80px]" value={editSoalForm.pembahasan} onChange={(e) => setEditSoalForm({ ...editSoalForm, pembahasan: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Poin</label>
+                <Input type="number" value={editSoalForm.poin} onChange={(e) => setEditSoalForm({ ...editSoalForm, poin: parseInt(e.target.value) || 1 })} className="h-9" />
+              </div>
+              <div className="flex items-end gap-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <input type="checkbox" checked={editSoalForm.isPublic} onChange={(e) => setEditSoalForm({ ...editSoalForm, isPublic: e.target.checked })} className="rounded accent-emerald-600" />
+                  Publikasikan soal
+                </label>
+              </div>
+            </div>
+          </div>
+          <div className="p-6 border-t border-gray-100 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setEditSoal(null)} className="text-gray-700 border-gray-200">Batal</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200" onClick={handleSaveEditSoal} disabled={editSaving}>
+              {editSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Edit className="w-4 h-4 mr-2" />}
+              Simpan Perubahan
+            </Button>
+          </div>
+        </ModalOverlay>
+      )}
     </div>
   )
 }
 
-// ==================== BUAT UJIAN ====================
+// ==================== BUAT UJIAN (FULLY FUNCTIONAL 5-STEP WIZARD) ====================
 function BuatUjian({ token }: { token: string | null }) {
   const [exams, setExams] = useState<ApiExam[]>([])
   const [mapelList, setMapelList] = useState<ApiMapel[]>([])
@@ -580,6 +780,21 @@ function BuatUjian({ token }: { token: string | null }) {
   const [loading, setLoading] = useState(true)
   const [examList, setExamList] = useState(true)
   const [step, setStep] = useState(1)
+
+  // FIX #23: Full wizard state management
+  const [wizardData, setWizardData] = useState({
+    judul: '', deskripsi: '', mataPelajaranId: '', tipeExam: 'UTS',
+    durasi: 90, token: '', tanggalMulai: '', tanggalSelesai: '',
+    acakSoal: true, acakOpsi: true, showResult: false, antiCheat: true,
+    passingGrade: 75, maxAttempt: 1,
+    selectedSoalIds: [] as string[],
+    selectedKelasIds: [] as string[],
+  })
+  const [publishing, setPublishing] = useState(false)
+
+  // FIX #24-25: Edit/View exam state
+  const [viewExam, setViewExam] = useState<ApiExam | null>(null)
+  const [editExamId, setEditExamId] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchData() {
@@ -604,14 +819,114 @@ function BuatUjian({ token }: { token: string | null }) {
     fetchData()
   }, [token])
 
+  const fetchExams = async () => {
+    try {
+      const res = await apiFetch('/api/v1/guru/exams?limit=50', token)
+      if (res.success) setExams(res.data?.data || [])
+    } catch { /* */ }
+  }
+
   if (loading) return <LoadingSkeleton />
+
+  // FIX #24: Edit exam - open wizard pre-filled
+  const handleEditExam = (exam: ApiExam) => {
+    setEditExamId(exam.id)
+    setWizardData({
+      judul: exam.judul, deskripsi: exam.deskripsi || '', mataPelajaranId: exam.mataPelajaranId,
+      tipeExam: exam.tipeExam, durasi: exam.durasi, token: exam.token || '',
+      tanggalMulai: '', tanggalSelesai: '',
+      acakSoal: exam.acakSoal, acakOpsi: exam.acakOpsi, showResult: exam.showResult, antiCheat: exam.antiCheat,
+      passingGrade: 75, maxAttempt: 1,
+      selectedSoalIds: [], selectedKelasIds: exam.examKelas?.map(ek => ek.kelas.id) || [],
+    })
+    setExamList(false)
+    setStep(1)
+  }
+
+  // FIX #23: Publish exam handler
+  const handlePublishExam = async () => {
+    if (!wizardData.judul || !wizardData.mataPelajaranId || !wizardData.durasi || !wizardData.tanggalMulai || !wizardData.tanggalSelesai) {
+      alert('Mohon lengkapi semua field wajib (Judul, Mata Pelajaran, Durasi, Tanggal Mulai & Selesai)')
+      return
+    }
+    try {
+      setPublishing(true)
+      const res = await apiFetch('/api/v1/exams', token, {
+        method: 'POST',
+        body: JSON.stringify({
+          judul: wizardData.judul,
+          deskripsi: wizardData.deskripsi,
+          mataPelajaranId: wizardData.mataPelajaranId,
+          tipeExam: wizardData.tipeExam,
+          durasi: wizardData.durasi,
+          token: wizardData.token || undefined,
+          tanggalMulai: wizardData.tanggalMulai,
+          tanggalSelesai: wizardData.tanggalSelesai,
+          acakSoal: wizardData.acakSoal,
+          acakOpsi: wizardData.acakOpsi,
+          showResult: wizardData.showResult,
+          antiCheat: wizardData.antiCheat,
+          maxAttempt: wizardData.maxAttempt,
+          passingGrade: wizardData.passingGrade,
+          kelasIds: wizardData.selectedKelasIds,
+          bankSoalIds: wizardData.selectedSoalIds,
+        }),
+      })
+      if (res.success) {
+        setExamList(true)
+        setStep(1)
+        setEditExamId(null)
+        setWizardData({
+          judul: '', deskripsi: '', mataPelajaranId: '', tipeExam: 'UTS',
+          durasi: 90, token: '', tanggalMulai: '', tanggalSelesai: '',
+          acakSoal: true, acakOpsi: true, showResult: false, antiCheat: true,
+          passingGrade: 75, maxAttempt: 1, selectedSoalIds: [], selectedKelasIds: [],
+        })
+        fetchExams()
+        alert('Ujian berhasil dibuat!')
+      } else {
+        alert(res.error?.message || 'Gagal membuat ujian')
+      }
+    } catch {
+      alert('Gagal membuat ujian')
+    } finally {
+      setPublishing(false)
+    }
+  }
+
+  const toggleSoalSelection = (id: string) => {
+    setWizardData(prev => ({
+      ...prev,
+      selectedSoalIds: prev.selectedSoalIds.includes(id)
+        ? prev.selectedSoalIds.filter(sid => sid !== id)
+        : [...prev.selectedSoalIds, id]
+    }))
+  }
+
+  const toggleKelasSelection = (id: string) => {
+    setWizardData(prev => ({
+      ...prev,
+      selectedKelasIds: prev.selectedKelasIds.includes(id)
+        ? prev.selectedKelasIds.filter(kid => kid !== id)
+        : [...prev.selectedKelasIds, id]
+    }))
+  }
 
   if (examList) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900">Daftar Ujian</h2>
-          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200" onClick={() => setExamList(false)}>
+          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200" onClick={() => {
+            setEditExamId(null)
+            setWizardData({
+              judul: '', deskripsi: '', mataPelajaranId: '', tipeExam: 'UTS',
+              durasi: 90, token: '', tanggalMulai: '', tanggalSelesai: '',
+              acakSoal: true, acakOpsi: true, showResult: false, antiCheat: true,
+              passingGrade: 75, maxAttempt: 1, selectedSoalIds: [], selectedKelasIds: [],
+            })
+            setExamList(false)
+          }}>
             <Plus className="w-4 h-4 mr-2" />Buat Ujian Baru
           </Button>
         </div>
@@ -644,8 +959,10 @@ function BuatUjian({ token }: { token: string | null }) {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 ml-4">
-                      <Button variant="outline" size="sm" className="text-gray-700 border-gray-200"><Edit className="w-4 h-4" /></Button>
-                      <Button variant="outline" size="sm" className="text-gray-700 border-gray-200"><Eye className="w-4 h-4" /></Button>
+                      {/* FIX #24: Edit button */}
+                      <Button variant="outline" size="sm" className="text-gray-700 border-gray-200" onClick={() => handleEditExam(exam)}><Edit className="w-4 h-4" /></Button>
+                      {/* FIX #25: View button */}
+                      <Button variant="outline" size="sm" className="text-gray-700 border-gray-200" onClick={() => setViewExam(exam)}><Eye className="w-4 h-4" /></Button>
                     </div>
                   </div>
                 </CardContent>
@@ -653,6 +970,55 @@ function BuatUjian({ token }: { token: string | null }) {
             ))
           )}
         </div>
+
+        {/* FIX #25: View Exam Detail Dialog */}
+        {viewExam && (
+          <ModalOverlay onClose={() => setViewExam(null)}>
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">Detail Ujian</h2>
+              <button onClick={() => setViewExam(null)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><X className="w-4 h-4 text-gray-500" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">{viewExam.judul}</h3>
+                <Badge className={`${getStatusColor(viewExam.status)} font-semibold border-0`}>
+                  {viewExam.status === 'ONGOING' ? 'Berlangsung' : viewExam.status === 'PUBLISHED' ? 'Terbit' : viewExam.status === 'SELESAI' ? 'Selesai' : 'Draft'}
+                </Badge>
+              </div>
+              {viewExam.deskripsi && <p className="text-sm text-gray-600">{viewExam.deskripsi}</p>}
+              {[
+                { label: 'Mata Pelajaran', value: viewExam.mataPelajaran?.nama || '-' },
+                { label: 'Tipe Ujian', value: viewExam.tipeExam },
+                { label: 'Durasi', value: `${viewExam.durasi} menit` },
+                { label: 'Jumlah Soal', value: String(viewExam._count?.examSoal ?? 0) },
+                { label: 'Jumlah Peserta', value: String(viewExam._count?.participants ?? 0) },
+                { label: 'Token', value: viewExam.token || '-' },
+                { label: 'Acak Soal', value: viewExam.acakSoal ? 'Ya' : 'Tidak' },
+                { label: 'Acak Opsi', value: viewExam.acakOpsi ? 'Ya' : 'Tidak' },
+                { label: 'Tampilkan Hasil', value: viewExam.showResult ? 'Ya' : 'Tidak' },
+                { label: 'Anti-Cheat', value: viewExam.antiCheat ? 'Ya' : 'Tidak' },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center justify-between py-2 border-b border-gray-50">
+                  <span className="text-sm text-gray-600">{item.label}</span>
+                  <span className="text-sm font-semibold text-gray-900">{item.value}</span>
+                </div>
+              ))}
+              {viewExam.examKelas && viewExam.examKelas.length > 0 && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Kelas:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {viewExam.examKelas.map(ek => (
+                      <Badge key={ek.kelas.id} variant="outline" className="font-semibold">{ek.kelas.nama}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="p-6 border-t border-gray-100 flex justify-end">
+              <Button variant="outline" onClick={() => setViewExam(null)} className="text-gray-700 border-gray-200">Tutup</Button>
+            </div>
+          </ModalOverlay>
+        )}
       </div>
     )
   }
@@ -664,6 +1030,8 @@ function BuatUjian({ token }: { token: string | null }) {
     { num: 4, label: 'Assign Kelas', icon: Users },
     { num: 5, label: 'Review', icon: CheckCircle },
   ]
+
+  const selectedMapel = mapelList.find(m => m.id === wizardData.mataPelajaranId)
 
   return (
     <div className="space-y-6">
@@ -683,39 +1051,50 @@ function BuatUjian({ token }: { token: string | null }) {
 
       <Card className="shadow-sm">
         <CardContent className="p-6">
+          {/* FIX #23: Step 1 - Info Dasar (fully controlled) */}
           {step === 1 && (
             <div className="space-y-5 max-w-xl">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">Informasi Dasar Ujian</h2>
-              <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Judul Ujian</label><Input placeholder="Contoh: UTS Matematika Kelas XI IPA" className="h-10" /></div>
-              <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Deskripsi</label><textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm min-h-[80px] focus:border-emerald-400 focus:ring-emerald-400/20" placeholder="Deskripsi ujian..." /></div>
+              <h2 className="text-lg font-bold text-gray-900 mb-4">{editExamId ? 'Edit' : ''} Informasi Dasar Ujian</h2>
+              <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Judul Ujian *</label><Input placeholder="Contoh: UTS Matematika Kelas XI IPA" className="h-10" value={wizardData.judul} onChange={(e) => setWizardData({ ...wizardData, judul: e.target.value })} /></div>
+              <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Deskripsi</label><textarea className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm min-h-[80px] focus:border-emerald-400 focus:ring-emerald-400/20" placeholder="Deskripsi ujian..." value={wizardData.deskripsi} onChange={(e) => setWizardData({ ...wizardData, deskripsi: e.target.value })} /></div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Mata Pelajaran</label>
-                  <select className="w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900">{mapelList.map(m => <option key={m.id} value={m.id}>{m.nama}</option>)}</select>
+                <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Mata Pelajaran *</label>
+                  <select className="w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900" value={wizardData.mataPelajaranId} onChange={(e) => setWizardData({ ...wizardData, mataPelajaranId: e.target.value })}>
+                    <option value="">Pilih Mapel</option>
+                    {mapelList.map(m => <option key={m.id} value={m.id}>{m.nama}</option>)}
+                  </select>
                 </div>
                 <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Tipe Ujian</label>
-                  <select className="w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900"><option>UTS</option><option>UAS</option><option>QUIZ</option><option>TUGAS</option><option>TRYOUT</option><option>PRAKTIKUM</option></select>
+                  <select className="w-full h-10 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900" value={wizardData.tipeExam} onChange={(e) => setWizardData({ ...wizardData, tipeExam: e.target.value })}>
+                    <option value="UTS">UTS</option><option value="UAS">UAS</option><option value="QUIZ">QUIZ</option><option value="TUGAS">TUGAS</option><option value="TRYOUT">TRYOUT</option><option value="PRAKTIKUM">PRAKTIKUM</option>
+                  </select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Durasi (menit)</label><Input type="number" defaultValue={90} className="h-10" /></div>
-                <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Token Ujian</label><Input placeholder="Opsional" className="h-10" /></div>
+                <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Durasi (menit) *</label><Input type="number" className="h-10" value={wizardData.durasi} onChange={(e) => setWizardData({ ...wizardData, durasi: parseInt(e.target.value) || 90 })} /></div>
+                <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Token Ujian</label><Input placeholder="Opsional" className="h-10" value={wizardData.token} onChange={(e) => setWizardData({ ...wizardData, token: e.target.value })} /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Tanggal Mulai</label><Input type="datetime-local" className="h-10" /></div>
-                <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Tanggal Selesai</label><Input type="datetime-local" className="h-10" /></div>
+                <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Tanggal Mulai *</label><Input type="datetime-local" className="h-10" value={wizardData.tanggalMulai} onChange={(e) => setWizardData({ ...wizardData, tanggalMulai: e.target.value })} /></div>
+                <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Tanggal Selesai *</label><Input type="datetime-local" className="h-10" value={wizardData.tanggalSelesai} onChange={(e) => setWizardData({ ...wizardData, tanggalSelesai: e.target.value })} /></div>
               </div>
             </div>
           )}
+
+          {/* FIX #23: Step 2 - Pilih Soal (with checkboxes tracking) */}
           {step === 2 && (
             <div className="space-y-5">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">Pilih Soal dari Bank Soal</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-gray-900">Pilih Soal dari Bank Soal</h2>
+                <Badge variant="outline" className="font-semibold">{wizardData.selectedSoalIds.length} soal dipilih</Badge>
+              </div>
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {soalList.length === 0 ? (
                   <EmptyState message="Belum ada soal di bank soal" icon={BookOpen} />
                 ) : (
                   soalList.map((soal) => (
-                    <div key={soal.id} className="flex items-start gap-3 p-4 rounded-xl border border-gray-100 hover:bg-emerald-50/30 transition-colors">
-                      <input type="checkbox" className="mt-1 accent-emerald-600 w-4 h-4" />
+                    <div key={soal.id} className={`flex items-start gap-3 p-4 rounded-xl border transition-colors cursor-pointer ${wizardData.selectedSoalIds.includes(soal.id) ? 'border-emerald-200 bg-emerald-50/50' : 'border-gray-100 hover:bg-emerald-50/30'}`} onClick={() => toggleSoalSelection(soal.id)}>
+                      <input type="checkbox" className="mt-1 accent-emerald-600 w-4 h-4" checked={wizardData.selectedSoalIds.includes(soal.id)} onChange={() => toggleSoalSelection(soal.id)} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-gray-800 font-medium line-clamp-2">{soal.pertanyaan}</p>
                         <div className="flex items-center gap-2 mt-1.5">
@@ -730,43 +1109,56 @@ function BuatUjian({ token }: { token: string | null }) {
               </div>
             </div>
           )}
+
+          {/* FIX #23: Step 3 - Pengaturan (controlled toggles) */}
           {step === 3 && (
             <div className="space-y-5 max-w-xl">
               <h2 className="text-lg font-bold text-gray-900 mb-4">Pengaturan Ujian</h2>
               {[
-                { label: 'Acak Urutan Soal', desc: 'Soal akan ditampilkan dalam urutan acak untuk setiap siswa', icon: Shuffle, defaultChecked: true },
-                { label: 'Acak Opsi Jawaban', desc: 'Opsi jawaban pilihan ganda akan diacak', icon: Shuffle, defaultChecked: true },
-                { label: 'Anti-Cheat', desc: 'Aktifkan deteksi tab switch, copy-paste, dan face detection', icon: Lock, defaultChecked: true },
-                { label: 'Tampilkan Hasil Langsung', desc: 'Siswa dapat melihat nilai setelah selesai', icon: Eye, defaultChecked: false },
+                { key: 'acakSoal' as const, label: 'Acak Urutan Soal', desc: 'Soal akan ditampilkan dalam urutan acak untuk setiap siswa', icon: Shuffle },
+                { key: 'acakOpsi' as const, label: 'Acak Opsi Jawaban', desc: 'Opsi jawaban pilihan ganda akan diacak', icon: Shuffle },
+                { key: 'antiCheat' as const, label: 'Anti-Cheat', desc: 'Aktifkan deteksi tab switch, copy-paste, dan face detection', icon: Lock },
+                { key: 'showResult' as const, label: 'Tampilkan Hasil Langsung', desc: 'Siswa dapat melihat nilai setelah selesai', icon: Eye },
               ].map((setting) => (
-                <div key={setting.label} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
+                <div key={setting.key} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-gray-50 border border-gray-100 rounded-lg flex items-center justify-center"><setting.icon className="w-5 h-5 text-gray-600" /></div>
                     <div><p className="text-sm font-semibold text-gray-900">{setting.label}</p><p className="text-xs text-gray-500">{setting.desc}</p></div>
                   </div>
-                  <input type="checkbox" defaultChecked={setting.defaultChecked} className="accent-emerald-600 w-5 h-5" />
+                  <input type="checkbox" checked={wizardData[setting.key]} onChange={(e) => setWizardData({ ...wizardData, [setting.key]: e.target.checked })} className="accent-emerald-600 w-5 h-5" />
                 </div>
               ))}
-              <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Passing Grade (%)</label><Input type="number" defaultValue={75} className="w-32 h-10" /></div>
-              <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Maksimum Percobaan</label><Input type="number" defaultValue={1} className="w-32 h-10" /></div>
+              <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Passing Grade (%)</label><Input type="number" className="w-32 h-10" value={wizardData.passingGrade} onChange={(e) => setWizardData({ ...wizardData, passingGrade: parseInt(e.target.value) || 75 })} /></div>
+              <div><label className="text-sm font-semibold text-gray-700 mb-1.5 block">Maksimum Percobaan</label><Input type="number" className="w-32 h-10" value={wizardData.maxAttempt} onChange={(e) => setWizardData({ ...wizardData, maxAttempt: parseInt(e.target.value) || 1 })} /></div>
             </div>
           )}
+
+          {/* FIX #23: Step 4 - Assign Kelas (with checkboxes tracking) */}
           {step === 4 && (
             <div className="space-y-5 max-w-xl">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">Assign ke Kelas</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-gray-900">Assign ke Kelas</h2>
+                <Badge variant="outline" className="font-semibold">{wizardData.selectedKelasIds.length} kelas dipilih</Badge>
+              </div>
               <p className="text-sm text-gray-600 font-medium mb-4">Pilih kelas yang akan mengerjakan ujian ini</p>
-              {kelasList.filter(k => k.tingkat >= 10).map((kelas) => (
-                <label key={kelas.id} className="flex items-center gap-4 p-4 rounded-xl border border-gray-100 hover:bg-emerald-50/30 cursor-pointer transition-colors">
-                  <input type="checkbox" className="accent-emerald-600 w-5 h-5" />
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-gray-900">{kelas.nama}</p>
-                    <p className="text-xs text-gray-500">Wali Kelas: {kelas.waliKelas?.name || '-'} · {kelas._count?.siswaKelas ?? 0} siswa</p>
-                  </div>
-                  <Badge variant="outline" className="font-semibold text-gray-700">{kelas._count?.siswaKelas ?? 0} siswa</Badge>
-                </label>
-              ))}
+              {kelasList.length === 0 ? (
+                <EmptyState message="Belum ada data kelas" icon={Users} />
+              ) : (
+                kelasList.map((kelas) => (
+                  <label key={kelas.id} className={`flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-colors ${wizardData.selectedKelasIds.includes(kelas.id) ? 'border-emerald-200 bg-emerald-50/30' : 'border-gray-100 hover:bg-emerald-50/30'}`}>
+                    <input type="checkbox" className="accent-emerald-600 w-5 h-5" checked={wizardData.selectedKelasIds.includes(kelas.id)} onChange={() => toggleKelasSelection(kelas.id)} />
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-900">{kelas.nama}</p>
+                      <p className="text-xs text-gray-500">Wali Kelas: {kelas.waliKelas?.name || '-'} · {kelas._count?.siswaKelas ?? 0} siswa</p>
+                    </div>
+                    <Badge variant="outline" className="font-semibold text-gray-700">{kelas._count?.siswaKelas ?? 0} siswa</Badge>
+                  </label>
+                ))
+              )}
             </div>
           )}
+
+          {/* FIX #23: Step 5 - Review & Publish */}
           {step === 5 && (
             <div className="space-y-5 max-w-2xl">
               <h2 className="text-lg font-bold text-gray-900 mb-4">Review & Publikasi</h2>
@@ -776,8 +1168,37 @@ function BuatUjian({ token }: { token: string | null }) {
                   <p className="text-sm text-emerald-700 font-medium">Pastikan semua pengaturan sudah benar sebelum mempublikasikan ujian.</p>
                 </CardContent>
               </Card>
+              <div className="space-y-3">
+                <h3 className="font-semibold text-gray-900">Informasi Ujian</h3>
+                {[
+                  { label: 'Judul', value: wizardData.judul || '-' },
+                  { label: 'Deskripsi', value: wizardData.deskripsi || '-' },
+                  { label: 'Mata Pelajaran', value: selectedMapel?.nama || '-' },
+                  { label: 'Tipe', value: wizardData.tipeExam },
+                  { label: 'Durasi', value: `${wizardData.durasi} menit` },
+                  { label: 'Token', value: wizardData.token || '-' },
+                  { label: 'Tanggal Mulai', value: wizardData.tanggalMulai ? new Date(wizardData.tanggalMulai).toLocaleString('id-ID') : '-' },
+                  { label: 'Tanggal Selesai', value: wizardData.tanggalSelesai ? new Date(wizardData.tanggalSelesai).toLocaleString('id-ID') : '-' },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center justify-between py-2 border-b border-gray-50">
+                    <span className="text-sm text-gray-600">{item.label}</span>
+                    <span className="text-sm font-semibold text-gray-900">{item.value}</span>
+                  </div>
+                ))}
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {wizardData.acakSoal && <Badge variant="outline" className="font-semibold"><Shuffle className="w-3 h-3 mr-1" />Acak Soal</Badge>}
+                  {wizardData.acakOpsi && <Badge variant="outline" className="font-semibold"><Shuffle className="w-3 h-3 mr-1" />Acak Opsi</Badge>}
+                  {wizardData.antiCheat && <Badge variant="outline" className="font-semibold"><Lock className="w-3 h-3 mr-1" />Anti-Cheat</Badge>}
+                  {wizardData.showResult && <Badge variant="outline" className="font-semibold"><Eye className="w-3 h-3 mr-1" />Tampilkan Hasil</Badge>}
+                </div>
+                <div className="mt-3 space-y-2">
+                  <p className="text-sm font-semibold text-gray-700">Soal: {wizardData.selectedSoalIds.length} dipilih</p>
+                  <p className="text-sm font-semibold text-gray-700">Kelas: {wizardData.selectedKelasIds.length} dipilih ({kelasList.filter(k => wizardData.selectedKelasIds.includes(k.id)).map(k => k.nama).join(', ') || '-'})</p>
+                </div>
+              </div>
             </div>
           )}
+
           <div className="flex items-center justify-between mt-8 pt-4 border-t border-gray-100">
             <Button variant="outline" onClick={() => step > 1 ? setStep(step - 1) : setExamList(true)} className="text-gray-700 border-gray-200">
               <ArrowLeft className="w-4 h-4 mr-2" />{step > 1 ? 'Sebelumnya' : 'Kembali'}
@@ -785,7 +1206,10 @@ function BuatUjian({ token }: { token: string | null }) {
             {step < 5 ? (
               <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200" onClick={() => setStep(step + 1)}>Selanjutnya <ArrowRight className="w-4 h-4 ml-2" /></Button>
             ) : (
-              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200" onClick={() => setExamList(true)}>Publikasikan Ujian <CheckCircle className="w-4 h-4 ml-2" /></Button>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200" onClick={handlePublishExam} disabled={publishing}>
+                {publishing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                Publikasikan Ujian
+              </Button>
             )}
           </div>
         </CardContent>
@@ -819,6 +1243,21 @@ function HasilUjian({ token }: { token: string | null }) {
     fetchData()
   }, [token])
 
+  // FIX #26: Export results to CSV
+  const handleExportResults = () => {
+    const data = results.map(r => ({
+      Siswa: r.siswa?.name || '-',
+      'NIP/NIS': r.siswa?.nipNis || '-',
+      Ujian: r.exam?.judul || '-',
+      'Nilai PG': r.nilai !== null ? r.nilai.toFixed(1) : '-',
+      'Nilai Essay': r.nilaiEssay !== null ? r.nilaiEssay.toFixed(1) : '-',
+      'Total Nilai': r.totalNilai !== null ? r.totalNilai.toFixed(1) : '-',
+      Durasi: r.durasi ? formatDuration(r.durasi) : '-',
+      Status: r.status,
+    }))
+    exportToCSV(data, 'hasil-ujian')
+  }
+
   if (loading) return <LoadingSkeleton />
 
   return (
@@ -828,7 +1267,8 @@ function HasilUjian({ token }: { token: string | null }) {
           <option>Semua Ujian</option>
           {exams.map(e => <option key={e.id} value={e.id}>{e.judul}</option>)}
         </select>
-        <Button variant="outline" size="sm" className="text-gray-700 border-gray-200"><Download className="w-4 h-4 mr-2" />Ekspor ke Excel</Button>
+        {/* FIX #26: Export results to CSV */}
+        <Button variant="outline" size="sm" className="text-gray-700 border-gray-200" onClick={handleExportResults}><Download className="w-4 h-4 mr-2" />Ekspor ke Excel</Button>
       </div>
 
       <Card className="shadow-sm">

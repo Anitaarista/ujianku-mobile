@@ -6,9 +6,12 @@ import '../../models/answer.dart';
 import '../../config/api_config.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/storage_service.dart';
 import '../../utils/helpers.dart';
 import '../../utils/constants.dart';
 import '../../widgets/custom_button.dart';
+import 'privacy_policy_screen.dart';
+import 'help_screen.dart';
 
 /// Halaman profil siswa — PRO-MAX UI/UX
 class ProfileScreen extends StatefulWidget {
@@ -29,7 +32,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _loadNotificationSetting();
     _loadStats();
+  }
+
+  Future<void> _loadNotificationSetting() async {
+    final enabled = await StorageService().getNotificationsEnabled();
+    setState(() => _notifications = enabled);
   }
 
   Future<void> _loadStats() async {
@@ -480,9 +489,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       value: _notifications,
                       onChanged: (value) {
                         setState(() => _notifications = value);
+                        StorageService().saveNotificationsEnabled(value);
                       },
                       contentPadding: EdgeInsets.zero,
-                      activeColor: AppTheme.primary,
+                      activeColor: AppTheme.primary, // ignore: deprecated_member_use
                     ),
                     const Divider(),
                     ListTile(
@@ -509,10 +519,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           color: Colors.grey[400]),
                       contentPadding: EdgeInsets.zero,
                       onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content:
-                                  Text('Halaman kebijakan privasi segera hadir')),
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const PrivacyPolicyScreen()),
                         );
                       },
                     ),
@@ -525,9 +535,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           color: Colors.grey[400]),
                       contentPadding: EdgeInsets.zero,
                       onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Halaman bantuan segera hadir')),
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const HelpScreen()),
                         );
                       },
                     ),

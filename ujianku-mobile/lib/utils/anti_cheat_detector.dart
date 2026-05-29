@@ -19,6 +19,7 @@ class AntiCheatDetector with WidgetsBindingObserver {
   bool _isMonitoring = false;
   DateTime? _lastBackgroundTime;
   final ExamService _examService = ExamService();
+  // ignore: unused_field
   final StorageService _storage = StorageService();
 
   /// Jumlah maksimal pelanggaran sebelum diskualifikasi

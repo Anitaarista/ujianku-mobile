@@ -71,24 +71,15 @@ class ProctorProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Memulai monitoring real-time
+  /// Memulai monitoring — single fetch only.
+  /// The caller (e.g. MonitoringScreen) is responsible for periodic polling.
   Future<void> startMonitoring(String sessionId) async {
     _isMonitoring = true;
     _error = null;
     notifyListeners();
 
-    // Muat data awal
+    // Muat data sekali saja — timer diurus oleh layar pemanggil
     await _fetchMonitoringData(sessionId);
-
-    // Atur polling setiap 5 detik
-    _monitoringTimer?.cancel();
-    _monitoringTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-      if (_isMonitoring) {
-        await _fetchMonitoringData(sessionId);
-      } else {
-        timer.cancel();
-      }
-    });
   }
 
   /// Mengambil data monitoring
