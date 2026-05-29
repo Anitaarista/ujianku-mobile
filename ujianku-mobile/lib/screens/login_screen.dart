@@ -493,7 +493,7 @@ class _LoginScreenState extends State<LoginScreen>
       // Cek role — hanya SISWA dan PENGAWAS yang boleh di mobile
       if (userRole == 'admin' || userRole == 'guru') {
         // Logout dan tampilkan pesan error
-        await context.read<AuthProvider>().clearUser();
+        context.read<AuthProvider>().clearUser();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
