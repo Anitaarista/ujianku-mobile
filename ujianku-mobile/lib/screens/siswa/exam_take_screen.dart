@@ -87,7 +87,9 @@ class _ExamTakeScreenState extends State<ExamTakeScreen> {
     setState(() => _isSubmitting = false);
 
     if (success) {
-      context.go('/siswa/exams/${widget.examId}/result');
+      // Navigate to the result screen and clear the exam state
+      final examId = widget.examId;
+      context.go('/siswa/exams/$examId/result');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

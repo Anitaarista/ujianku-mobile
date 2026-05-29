@@ -8,7 +8,7 @@ import 'api_service.dart';
 class ExamService {
   final ApiService _api = ApiService();
 
-  /// Mendapatkan daftar ujian
+  /// Mendapatkan daftar ujian (endpoint siswa)
   Future<ExamListResult> getExams({
     ExamFilter filter = ExamFilter.all,
     int page = 1,
@@ -23,7 +23,8 @@ class ExamService {
       queryParams['status'] = filter.name;
     }
 
-    final response = await _api.get(ApiConfig.exams, queryParams: queryParams);
+    // Gunakan endpoint khusus siswa untuk mendapatkan data ujian yang relevan
+    final response = await _api.get(ApiConfig.siswaExams, queryParams: queryParams);
 
     if (response.success && response.listBody != null) {
       final exams = response.listBody!
@@ -187,6 +188,27 @@ class ExamService {
     );
     return response.success;
   }
+
+  /// Mendapatkan daftar hasil ujian siswa
+  Future<ExamResultsListResult> getSiswaResults({int page = 1}) async {
+    final response = await _api.get(
+      ApiConfig.siswaResults,
+      queryParams: {'page': page.toString()},
+    );
+
+    if (response.success && response.listBody != null) {
+      final results = response.listBody!
+          .map((e) => ExamResult.fromJson(e as Map<String, dynamic>))
+          .toList();
+
+      return ExamResultsListResult(success: true, results: results);
+    }
+
+    return ExamResultsListResult(
+      success: false,
+      message: response.message,
+    );
+  }
 }
 
 /// Hasil daftar ujian
@@ -267,6 +289,19 @@ class ExamResultData {
   const ExamResultData({
     required this.success,
     this.result,
+    this.message = '',
+  });
+}
+
+/// Hasil daftar hasil ujian siswa
+class ExamResultsListResult {
+  final bool success;
+  final List<ExamResult> results;
+  final String message;
+
+  const ExamResultsListResult({
+    required this.success,
+    this.results = const [],
     this.message = '',
   });
 }

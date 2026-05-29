@@ -3,7 +3,7 @@
  */
 export function exportToCSV(data: Record<string, unknown>[], filename: string) {
   if (data.length === 0) {
-    alert('Tidak ada data untuk diekspor')
+    console.warn('Tidak ada data untuk diekspor')
     return
   }
 

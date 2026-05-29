@@ -371,7 +371,7 @@ class _ViolationListScreenState extends State<ViolationListScreen> {
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
-                    initialValue: _selectedSessionId,
+                    value: _selectedSessionId,
                     decoration: const InputDecoration(
                       hintText: 'Semua sesi',
                       prefixIcon: Icon(Icons.assignment_outlined),

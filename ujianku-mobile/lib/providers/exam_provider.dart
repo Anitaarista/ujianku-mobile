@@ -12,6 +12,7 @@ class ExamProvider with ChangeNotifier {
   Exam? _currentExam;
   List<Question> _questions = [];
   ExamResult? _examResult;
+  List<ExamResult> _examResults = [];
   ExamFilter _currentFilter = ExamFilter.all;
   bool _isLoading = false;
   bool _isSubmitting = false;
@@ -24,6 +25,7 @@ class ExamProvider with ChangeNotifier {
   Exam? get currentExam => _currentExam;
   List<Question> get questions => _questions;
   ExamResult? get examResult => _examResult;
+  List<ExamResult> get examResults => _examResults;
   ExamFilter get currentFilter => _currentFilter;
   bool get isLoading => _isLoading;
   bool get isSubmitting => _isSubmitting;
@@ -286,6 +288,27 @@ class ExamProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Memuat daftar hasil ujian siswa
+  Future<void> loadExamResults() async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final result = await _examService.getSiswaResults();
+      if (result.success) {
+        _examResults = result.results;
+      } else {
+        _error = result.message;
+      }
+    } catch (e) {
+      _error = 'Gagal memuat hasil ujian: ${e.toString()}';
+    }
+
+    _isLoading = false;
+    notifyListeners();
+  }
+
   /// Mengatur filter
   void setFilter(ExamFilter filter) {
     _currentFilter = filter;
@@ -299,6 +322,12 @@ class ExamProvider with ChangeNotifier {
     _currentQuestionIndex = 0;
     _attemptId = null;
     _examResult = null;
+    notifyListeners();
+  }
+
+  /// Reset state hasil ujian
+  void resetExamResults() {
+    _examResults = [];
     notifyListeners();
   }
 

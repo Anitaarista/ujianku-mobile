@@ -68,7 +68,14 @@ class _ExamResultScreenState extends State<ExamResultScreen>
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF1A1A2E)),
-          onPressed: () => context.go('/siswa'),
+          onPressed: () {
+            // Go back to results list or home
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/siswa');
+            }
+          },
         ),
         actions: [
           if (result != null && result.answerReviews != null)

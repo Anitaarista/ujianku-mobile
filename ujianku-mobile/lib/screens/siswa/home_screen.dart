@@ -24,7 +24,6 @@ class SiswaHomeScreen extends StatefulWidget {
 class _SiswaHomeScreenState extends State<SiswaHomeScreen> {
   final ApiService _api = ApiService();
   List<ExamResult> _recentResults = [];
-  // ignore: unused_field
   bool _isLoadingResults = false;
   double _averageScore = 0.0;
   int _totalExamsCompleted = 0;
@@ -68,6 +67,42 @@ class _SiswaHomeScreenState extends State<SiswaHomeScreen> {
     ]);
   }
 
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Keluar dari Akun?',
+            style: TextStyle(fontWeight: FontWeight.w700)),
+        content: Text(
+          'Anda akan keluar dari akun dan harus login kembali.',
+          style: TextStyle(color: Colors.grey[600]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text('Batal',
+                style:
+                    TextStyle(color: Colors.grey[600], fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await context.read<AuthProvider>().logout();
+              if (mounted) {
+                context.go('/login');
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+            child: const Text('Keluar',
+                style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
@@ -82,7 +117,7 @@ class _SiswaHomeScreenState extends State<SiswaHomeScreen> {
         child: CustomScrollView(
           slivers: [
             // Header
-            SliverToBoxAdapter(child: _HomeHeader(user: user)),
+            SliverToBoxAdapter(child: _HomeHeader(user: user, onLogout: _showLogoutDialog)),
 
             // Statistik ringkas
             SliverToBoxAdapter(
@@ -96,7 +131,11 @@ class _SiswaHomeScreenState extends State<SiswaHomeScreen> {
             ),
 
             // Quick actions
-            SliverToBoxAdapter(child: _QuickActions()),
+            SliverToBoxAdapter(child: _QuickActions(
+              onExams: () => context.go('/siswa/exams'),
+              onResults: () => context.go('/siswa/results'),
+              onProfile: () => context.go('/siswa/profile'),
+            )),
 
             // Ujian mendatang
             SliverToBoxAdapter(
@@ -167,77 +206,8 @@ class _SiswaHomeScreenState extends State<SiswaHomeScreen> {
 /// Header halaman beranda
 class _HomeHeader extends StatelessWidget {
   final dynamic user;
-  const _HomeHeader({required this.user});
-
-  void _showNotificationsBottomSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Handle bar
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 20),
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            // Title
-            Row(
-              children: [
-                const Text(
-                  'Notifikasi',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1A2E),
-                  ),
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text('Tutup',
-                      style: TextStyle(
-                          color: Colors.grey[600], fontWeight: FontWeight.w600)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            // Empty state
-            Icon(Icons.notifications_off_outlined,
-                size: 64, color: Colors.grey[300]),
-            const SizedBox(height: 16),
-            const Text(
-              'Belum ada notifikasi',
-              style: TextStyle(
-                color: Color(0xFF1A1A2E),
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Notifikasi tentang ujian mendatang dan hasil akan muncul di sini',
-              style: TextStyle(
-                color: Colors.grey[500],
-                fontSize: 13,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    );
-  }
+  final VoidCallback onLogout;
+  const _HomeHeader({required this.user, required this.onLogout});
 
   @override
   Widget build(BuildContext context) {
@@ -296,8 +266,9 @@ class _HomeHeader extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             child: IconButton(
-              icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-              onPressed: () => _showNotificationsBottomSheet(context),
+              icon: const Icon(Icons.logout, color: Colors.white, size: 20),
+              onPressed: () => _showLogoutDialog(),
+              tooltip: 'Keluar',
             ),
           ),
         ],
@@ -412,6 +383,16 @@ class _StatCard extends StatelessWidget {
 
 /// Quick action buttons
 class _QuickActions extends StatelessWidget {
+  final VoidCallback onExams;
+  final VoidCallback onResults;
+  final VoidCallback onProfile;
+
+  const _QuickActions({
+    required this.onExams,
+    required this.onResults,
+    required this.onProfile,
+  });
+
   @override
   Widget build(BuildContext context) {
     return Padding(

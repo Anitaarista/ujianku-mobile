@@ -8,6 +8,7 @@ import '../screens/siswa/exam_list_screen.dart';
 import '../screens/siswa/exam_detail_screen.dart';
 import '../screens/siswa/exam_take_screen.dart';
 import '../screens/siswa/exam_result_screen.dart';
+import '../screens/siswa/exam_results_list_screen.dart';
 import '../screens/siswa/profile_screen.dart';
 import '../screens/pengawas/home_screen.dart';
 import '../screens/pengawas/monitoring_screen.dart';
@@ -73,7 +74,7 @@ class AppRoutes {
             GoRoute(
               path: '/siswa/results',
               pageBuilder: (context, state) => const NoTransitionPage(
-                child: ExamResultScreen(examId: 'latest'),
+                child: ExamResultsListScreen(),
               ),
             ),
             GoRoute(

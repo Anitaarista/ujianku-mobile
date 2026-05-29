@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../config/theme.dart';
 import '../utils/constants.dart';
+import '../providers/auth_provider.dart';
 
 /// Halaman splash screen aplikasi UjianKu
 class SplashScreen extends StatefulWidget {
@@ -53,9 +55,27 @@ class _SplashScreenState extends State<SplashScreen>
 
     _animationController.forward();
 
-    // Navigasi setelah splash
-    Future.delayed(const Duration(milliseconds: AppConstants.splashDuration), () {
-      if (mounted) {
+    // Navigasi setelah splash — cek status autentikasi
+    Future.delayed(const Duration(milliseconds: AppConstants.splashDuration), () async {
+      if (!mounted) return;
+
+      final authProvider = context.read<AuthProvider>();
+      await authProvider.checkAuth();
+
+      if (!mounted) return;
+
+      if (authProvider.isLoggedIn && authProvider.user != null) {
+        final role = authProvider.user!.role.toLowerCase();
+        // Role admin/guru tidak boleh di mobile
+        if (role == 'admin' || role == 'guru') {
+          await authProvider.logout();
+          if (mounted) context.go('/login');
+        } else if (role == 'pengawas') {
+          context.go('/pengawas');
+        } else {
+          context.go('/siswa');
+        }
+      } else {
         context.go('/login');
       }
     });

@@ -7,7 +7,9 @@ import {
   Bell, Search, LogOut, ChevronRight, Plus, Download,
   TrendingUp, TrendingDown, UserPlus, MoreVertical, Edit, Trash2,
   CheckCircle, XCircle, GraduationCap, FileText, Activity,
-  Shield, Eye, Calendar, Building2, Loader2, AlertCircle, X
+  Shield, Eye, Calendar, Building2, Loader2, AlertCircle, X,
+  Save, Moon, Sun, Monitor, Lock, Info, Database, Server, Mail,
+  MessageSquare, Megaphone, CheckCheck
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -20,9 +22,10 @@ import {
 } from 'recharts'
 import {
   examActivityData, gradeDistributionData, subjectScoreData, participantTrendData,
-  getStatusColor, getDifficultyColor
+  getStatusColor, getDifficultyColor, mockNotifications
 } from './mock-data'
 import { exportToCSV } from '@/lib/csv-export'
+import { toast } from '@/hooks/use-toast'
 
 type AdminTab = 'dashboard' | 'users' | 'sekolah' | 'mapel' | 'analytics' | 'settings'
 
@@ -86,6 +89,7 @@ export function AdminDashboard({ onBack, user, token }: AdminDashboardProps) {
   const [addUserPresetRole, setAddUserPresetRole] = useState('GURU')
   const [showNotifDropdown, setShowNotifDropdown] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
+  const [notifications, setNotifications] = useState(mockNotifications.map(n => ({ ...n })))
 
   // Close notification dropdown on outside click
   useEffect(() => {
@@ -104,7 +108,7 @@ export function AdminDashboard({ onBack, user, token }: AdminDashboardProps) {
       setActiveTab('users')
       setTimeout(() => setShowAddUserModal(true), 100)
     } else if (action === 'Buat Ujian Baru') {
-      alert('Fitur Buat Ujian tersedia di panel Guru')
+      toast({ title: 'Fitur Buat Ujian', description: 'Fitur Buat Ujian tersedia di panel Guru. Silakan masuk sebagai Guru untuk membuat ujian baru.', variant: 'default' })
     } else if (action === 'Lihat Laporan') {
       setActiveTab('analytics')
     } else if (action === 'Kelola Sekolah') {
@@ -179,17 +183,52 @@ export function AdminDashboard({ onBack, user, token }: AdminDashboardProps) {
             <div className="relative" ref={notifRef}>
               <button className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors" onClick={() => setShowNotifDropdown(!showNotifDropdown)}>
                 <Bell className="w-5 h-5 text-gray-600" />
-                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+                {notifications.some(n => !n.isRead) && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+                )}
               </button>
               {showNotifDropdown && (
                 <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden">
-                  <div className="p-4 border-b border-gray-100">
+                  <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                     <h3 className="text-sm font-bold text-gray-900">Notifikasi</h3>
+                    {notifications.some(n => !n.isRead) && (
+                      <button onClick={() => { setNotifications(prev => prev.map(n => ({ ...n, isRead: true }))); toast({ title: 'Notifikasi', description: 'Semua notifikasi ditandai sudah dibaca' }) }} className="text-xs text-violet-600 hover:text-violet-700 font-semibold flex items-center gap-1">
+                        <CheckCheck className="w-3.5 h-3.5" />Tandai Semua Dibaca
+                      </button>
+                    )}
                   </div>
-                  <div className="p-8 text-center">
-                    <Bell className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                    <p className="text-sm text-gray-500 font-medium">Belum ada notifikasi</p>
-                    <p className="text-xs text-gray-400 mt-1">Notifikasi baru akan muncul di sini</p>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="p-8 text-center">
+                        <Bell className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                        <p className="text-sm text-gray-500 font-medium">Belum ada notifikasi</p>
+                        <p className="text-xs text-gray-400 mt-1">Notifikasi baru akan muncul di sini</p>
+                      </div>
+                    ) : (
+                      notifications.map((notif) => {
+                        const notifBg = !notif.isRead ? "bg-violet-50/50" : ""
+                        const notifColor = notif.tipe === "exam" ? "bg-emerald-100 text-emerald-600" : notif.tipe === "violation" ? "bg-red-100 text-red-600" : notif.tipe === "result" ? "bg-violet-100 text-violet-600" : "bg-amber-100 text-amber-600"
+                        const titleClass = !notif.isRead ? "font-bold text-gray-900" : "font-medium text-gray-700"
+                        const NotifIcon = notif.tipe === "exam" ? FileText : notif.tipe === "violation" ? AlertCircle : notif.tipe === "result" ? BarChart3 : Megaphone
+                        return (
+                          <div key={notif.id} className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${notifBg}`} onClick={() => { setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, isRead: true } : n)) }}>
+                            <div className="flex items-start gap-3">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${notifColor}`}>
+                                <NotifIcon className="w-4 h-4" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className={`text-sm truncate ${titleClass}`}>{notif.judul}</p>
+                                  {!notif.isRead && <span className="w-2 h-2 bg-violet-500 rounded-full shrink-0" />}
+                                </div>
+                                <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{notif.pesan}</p>
+                                <p className="text-[10px] text-gray-400 mt-1">{notif.waktu}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
                   </div>
                 </div>
               )}
@@ -203,7 +242,7 @@ export function AdminDashboard({ onBack, user, token }: AdminDashboardProps) {
           {activeTab === 'sekolah' && <SekolahKelas token={token ?? null} />}
           {activeTab === 'mapel' && <MataPelajaran token={token ?? null} />}
           {activeTab === 'analytics' && <Analytics token={token ?? null} />}
-          {activeTab === 'settings' && <SystemSettings />}
+          {activeTab === 'settings' && <SystemSettings user={user} token={token ?? null} />}
         </div>
       </main>
     </div>
@@ -285,6 +324,9 @@ function DashboardOverview({ token, onQuickAction }: { token: string | null; onQ
   const [exams, setExams] = useState<ApiExam[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [showAllExams, setShowAllExams] = useState(false)
+  const [allExams, setAllExams] = useState<ApiExam[]>([])
+  const [loadingAll, setLoadingAll] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
@@ -302,6 +344,22 @@ function DashboardOverview({ token, onQuickAction }: { token: string | null; onQ
       setLoading(false)
     }
   }, [token])
+
+  const handleShowAllExams = useCallback(async () => {
+    if (showAllExams) { setShowAllExams(false); return }
+    try {
+      setLoadingAll(true)
+      const res = await apiFetch('/api/v1/exams?limit=100', token)
+      if (res.success) {
+        setAllExams(res.data?.data || [])
+        setShowAllExams(true)
+      }
+    } catch {
+      toast({ title: 'Gagal', description: 'Gagal memuat semua ujian', variant: 'destructive' })
+    } finally {
+      setLoadingAll(false)
+    }
+  }, [token, showAllExams])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -409,11 +467,14 @@ function DashboardOverview({ token, onQuickAction }: { token: string | null; onQ
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-semibold text-gray-900">Ujian Terbaru</CardTitle>
-            <Button variant="outline" size="sm" className="text-gray-600 border-gray-200">Lihat Semua</Button>
+            <Button variant="outline" size="sm" className="text-gray-600 border-gray-200" onClick={handleShowAllExams} disabled={loadingAll}>
+              {loadingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+              {showAllExams ? 'Tutup' : 'Lihat Semua'}
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
-          {exams.length === 0 ? (
+          {(showAllExams ? allExams : exams).length === 0 ? (
             <EmptyState message="Belum ada ujian" icon={FileText} />
           ) : (
             <div className="overflow-x-auto">
@@ -428,7 +489,7 @@ function DashboardOverview({ token, onQuickAction }: { token: string | null; onQ
                   </tr>
                 </thead>
                 <tbody>
-                  {exams.map((exam, i) => (
+                  {(showAllExams ? allExams : exams).map((exam, i) => (
                     <tr key={exam.id} className={`border-b border-gray-50 hover:bg-violet-50/30 transition-colors ${i % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
                       <td className="py-3 px-4 font-semibold text-gray-900">{exam.judul}</td>
                       <td className="py-3 px-4 text-gray-700">{exam.mataPelajaran?.nama || '-'}</td>
@@ -1727,69 +1788,305 @@ function Analytics({ token }: { token: string | null }) {
 }
 
 // ==================== SYSTEM SETTINGS ====================
-function SystemSettings() {
+function SystemSettings({ user, token }: { user?: { id: string; name: string; email: string; role: string; avatar?: string } | undefined; token: string | null }) {
+  // Profile state
+  const [profile, setProfile] = useState({
+    name: user?.name || '',
+    email: user?.email || '',
+    phone: '081234567890',
+    nip: '198503142010011001',
+  })
+  const [savingProfile, setSavingProfile] = useState(false)
+
+  // Password state
+  const [passwords, setPasswords] = useState({ current: '', newPass: '', confirm: '' })
+  const [savingPassword, setSavingPassword] = useState(false)
+  const [passwordError, setPasswordError] = useState('')
+
+  // Theme state
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('ujianku-theme')
+      return (saved as 'light' | 'dark' | 'system') || 'system'
+    }
+    return 'system'
+  })
+
+  // Notification preferences
+  const [notifPrefs, setNotifPrefs] = useState({
+    examStarted: true,
+    examCompleted: true,
+    violation: true,
+    announcement: true,
+    emailNotif: false,
+  })
+
+  const handleSaveProfile = async () => {
+    if (!profile.name.trim() || !profile.email.trim()) {
+      toast({ title: 'Validasi Gagal', description: 'Nama dan email wajib diisi', variant: 'destructive' })
+      return
+    }
+    try {
+      setSavingProfile(true)
+      if (user?.id && token) {
+        await apiFetch(`/api/v1/admin/users/${user.id}`, token, {
+          method: 'PUT',
+          body: JSON.stringify({ name: profile.name, email: profile.email, phone: profile.phone, nipNis: profile.nip }),
+        })
+      }
+      toast({ title: 'Profil Disimpan', description: 'Data profil berhasil diperbarui' })
+    } catch {
+      toast({ title: 'Gagal Menyimpan', description: 'Terjadi kesalahan saat menyimpan profil', variant: 'destructive' })
+    } finally {
+      setSavingProfile(false)
+    }
+  }
+
+  const handleChangePassword = async () => {
+    setPasswordError('')
+    if (!passwords.current || !passwords.newPass || !passwords.confirm) {
+      setPasswordError('Semua kolom password wajib diisi')
+      return
+    }
+    if (passwords.newPass.length < 8) {
+      setPasswordError('Password baru minimal 8 karakter')
+      return
+    }
+    if (passwords.newPass !== passwords.confirm) {
+      setPasswordError('Konfirmasi password tidak cocok')
+      return
+    }
+    try {
+      setSavingPassword(true)
+      if (token) {
+        const res = await apiFetch('/api/v1/auth/change-password', token, {
+          method: 'POST',
+          body: JSON.stringify({ currentPassword: passwords.current, newPassword: passwords.newPass }),
+        })
+        if (!res.success) {
+          setPasswordError(res.message || 'Password saat ini salah')
+          return
+        }
+      }
+      setPasswords({ current: '', newPass: '', confirm: '' })
+      toast({ title: 'Password Diubah', description: 'Password berhasil diperbarui' })
+    } catch {
+      setPasswordError('Terjadi kesalahan saat mengubah password')
+    } finally {
+      setSavingPassword(false)
+    }
+  }
+
+  const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
+    setTheme(newTheme)
+    localStorage.setItem('ujianku-theme', newTheme)
+    if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark')
+    } else if (newTheme === 'light') {
+      document.documentElement.classList.remove('dark')
+    } else {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+      document.documentElement.classList.toggle('dark', prefersDark)
+    }
+    toast({ title: 'Tema Diperbarui', description: `Tema diubah ke ${newTheme === 'light' ? 'Terang' : newTheme === 'dark' ? 'Gelap' : 'Sistem'}` })
+  }
+
+  const handleSaveNotifPrefs = () => {
+    localStorage.setItem('ujianku-notif-prefs', JSON.stringify(notifPrefs))
+    toast({ title: 'Preferensi Disimpan', description: 'Pengaturan notifikasi berhasil diperbarui' })
+  }
+
   return (
     <div className="space-y-6 max-w-3xl">
+      {/* Profile Settings */}
       <Card className="shadow-sm">
         <CardHeader className="pb-4">
-          <CardTitle className="text-base font-semibold text-gray-900">Pengaturan Umum</CardTitle>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center">
+              <Users className="w-5 h-5 text-violet-600" />
+            </div>
+            <div>
+              <CardTitle className="text-base font-semibold text-gray-900">Pengaturan Profil</CardTitle>
+              <p className="text-xs text-gray-500">Kelola informasi profil administrator</p>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-5">
+        <CardContent className="space-y-4">
+          <div>
+            <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Nama Lengkap</label>
+            <Input value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} placeholder="Nama lengkap" className="h-10" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Email</label>
+            <Input type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} placeholder="email@sekolah.id" className="h-10" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700 mb-1.5 block">No. Telepon</label>
+            <Input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} placeholder="08xxxxxxxxxx" className="h-10" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700 mb-1.5 block">NIP</label>
+            <Input value={profile.nip} onChange={(e) => setProfile({ ...profile, nip: e.target.value })} placeholder="NIP" className="h-10" />
+          </div>
+          <Button className="bg-violet-600 hover:bg-violet-700 text-white shadow-md shadow-violet-200" onClick={handleSaveProfile} disabled={savingProfile}>
+            {savingProfile ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+            Simpan Profil
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Change Password */}
+      <Card className="shadow-sm">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+              <Lock className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <CardTitle className="text-base font-semibold text-gray-900">Ubah Password</CardTitle>
+              <p className="text-xs text-gray-500">Perbarui password akun Anda</p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {passwordError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />{passwordError}
+            </div>
+          )}
+          <div>
+            <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Password Saat Ini</label>
+            <Input type="password" value={passwords.current} onChange={(e) => setPasswords({ ...passwords, current: e.target.value })} placeholder="Masukkan password saat ini" className="h-10" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Password Baru</label>
+            <Input type="password" value={passwords.newPass} onChange={(e) => setPasswords({ ...passwords, newPass: e.target.value })} placeholder="Minimal 8 karakter" className="h-10" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Konfirmasi Password Baru</label>
+            <Input type="password" value={passwords.confirm} onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })} placeholder="Ulangi password baru" className="h-10" />
+          </div>
+          <Button className="bg-amber-600 hover:bg-amber-700 text-white shadow-md shadow-amber-200" onClick={handleChangePassword} disabled={savingPassword}>
+            {savingPassword ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Lock className="w-4 h-4 mr-2" />}
+            Ubah Password
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Theme Preference */}
+      <Card className="shadow-sm">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center">
+              <Monitor className="w-5 h-5 text-sky-600" />
+            </div>
+            <div>
+              <CardTitle className="text-base font-semibold text-gray-900">Preferensi Tema</CardTitle>
+              <p className="text-xs text-gray-500">Atur tampilan aplikasi</p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { value: 'light' as const, label: 'Terang', icon: Sun, desc: 'Tema terang' },
+              { value: 'dark' as const, label: 'Gelap', icon: Moon, desc: 'Tema gelap' },
+              { value: 'system' as const, label: 'Sistem', icon: Monitor, desc: 'Ikuti sistem' },
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => handleThemeChange(opt.value)}
+                className={`p-4 rounded-xl border-2 transition-all text-center ${
+                  theme === opt.value
+                    ? 'border-violet-500 bg-violet-50 shadow-md shadow-violet-100'
+                    : 'border-gray-200 hover:border-gray-300 bg-white'
+                }`}
+              >
+                <opt.icon className={`w-6 h-6 mx-auto mb-2 ${theme === opt.value ? 'text-violet-600' : 'text-gray-400'}`} />
+                <p className={`text-sm font-semibold ${theme === opt.value ? 'text-violet-700' : 'text-gray-700'}`}>{opt.label}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">{opt.desc}</p>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Notification Preferences */}
+      <Card className="shadow-sm">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+              <Bell className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <CardTitle className="text-base font-semibold text-gray-900">Preferensi Notifikasi</CardTitle>
+              <p className="text-xs text-gray-500">Atur jenis notifikasi yang ingin Anda terima</p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
           {[
-            { label: 'Nama Platform', value: 'UjianKu', desc: 'Konfigurasi nama platform' },
-            { label: 'Logo', value: '', desc: 'Unggah logo platform' },
-            { label: 'Bahasa Default', value: 'Indonesia', desc: 'Konfigurasi bahasa default' },
-            { label: 'Zona Waktu', value: 'Asia/Jakarta (WIB)', desc: 'Konfigurasi zona waktu' },
-          ].map((setting) => (
-            <div key={setting.label} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{setting.label}</p>
-                <p className="text-xs text-gray-500">{setting.desc}</p>
+            { key: 'examStarted' as const, label: 'Ujian Dimulai', desc: 'Notifikasi saat ujian dimulai', icon: FileText },
+            { key: 'examCompleted' as const, label: 'Ujian Selesai', desc: 'Notifikasi saat ujian selesai dikerjakan', icon: CheckCircle },
+            { key: 'violation' as const, label: 'Pelanggaran', desc: 'Notifikasi saat terdeteksi pelanggaran', icon: AlertCircle },
+            { key: 'announcement' as const, label: 'Pengumuman', desc: 'Notifikasi pengumuman sistem', icon: Megaphone },
+            { key: 'emailNotif' as const, label: 'Notifikasi Email', desc: 'Kirim notifikasi juga ke email', icon: Mail },
+          ].map((item) => (
+            <div key={item.key} className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${notifPrefs[item.key] ? 'bg-violet-100' : 'bg-gray-100'}`}>
+                  <item.icon className={`w-4.5 h-4.5 ${notifPrefs[item.key] ? 'text-violet-600' : 'text-gray-400'}`} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{item.label}</p>
+                  <p className="text-xs text-gray-500">{item.desc}</p>
+                </div>
               </div>
-              <Input className="w-64" defaultValue={setting.value} />
+              <button
+                onClick={() => setNotifPrefs({ ...notifPrefs, [item.key]: !notifPrefs[item.key] })}
+                className={`relative w-11 h-6 rounded-full transition-colors ${notifPrefs[item.key] ? 'bg-violet-600' : 'bg-gray-300'}`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${notifPrefs[item.key] ? 'translate-x-5.5 left-0' : 'left-0.5'}`} style={{ transform: notifPrefs[item.key] ? 'translateX(22px)' : 'translateX(0)' }} />
+              </button>
             </div>
           ))}
+          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200" onClick={handleSaveNotifPrefs}>
+            <Save className="w-4 h-4 mr-2" />Simpan Preferensi
+          </Button>
         </CardContent>
       </Card>
 
+      {/* System Info */}
       <Card className="shadow-sm">
         <CardHeader className="pb-4">
-          <CardTitle className="text-base font-semibold text-gray-900">Pengaturan Ujian Default</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {[
-            { label: 'Durasi Default (menit)', value: '90' },
-            { label: 'Maksimum Percobaan', value: '1' },
-            { label: 'Passing Grade Default (%)', value: '75' },
-            { label: 'Anti-Cheat Default', value: 'Aktif' },
-            { label: 'Acak Soal Default', value: 'Aktif' },
-            { label: 'Acak Opsi Default', value: 'Aktif' },
-          ].map((setting) => (
-            <div key={setting.label} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
-              <p className="text-sm font-semibold text-gray-900">{setting.label}</p>
-              <Input className="w-40" defaultValue={setting.value} />
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+              <Info className="w-5 h-5 text-gray-600" />
             </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card className="shadow-sm">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base font-semibold text-gray-900">Template Notifikasi</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {[
-            { label: 'Ujian Dibuat', template: 'Ujian "{judul}" telah dibuat dan dijadwalkan pada {tanggal}' },
-            { label: 'Ujian Dimulai', template: 'Ujian "{judul}" telah dimulai. Token: {token}' },
-            { label: 'Nilai Dipublikasikan', template: 'Nilai ujian "{judul}" telah dipublikasikan. Nilai Anda: {nilai}' },
-            { label: 'Pelanggaran', template: 'Pelanggaran terdeteksi: {deskripsi} pada ujian "{judul}"' },
-          ].map((notif) => (
-            <div key={notif.label} className="py-3 border-b border-gray-100 last:border-0">
-              <p className="text-sm font-semibold text-gray-900 mb-2">{notif.label}</p>
-              <Input className="w-full" defaultValue={notif.template} />
+            <div>
+              <CardTitle className="text-base font-semibold text-gray-900">Informasi Sistem</CardTitle>
+              <p className="text-xs text-gray-500">Detail teknis aplikasi</p>
             </div>
-          ))}
-          <Button className="bg-violet-600 hover:bg-violet-700 text-white shadow-md shadow-violet-200">Simpan Pengaturan</Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {[
+              { label: 'Versi Aplikasi', value: '2.1.0', icon: Activity },
+              { label: 'Database', value: 'SQLite (Aktif)', icon: Database },
+              { label: 'Server', value: 'Next.js 16', icon: Server },
+              { label: 'Status Koneksi', value: 'Terhubung', icon: CheckCircle },
+              { label: 'Terakhir Diperbarui', value: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }), icon: Calendar },
+            ].map((info) => (
+              <div key={info.label} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                <div className="flex items-center gap-2.5">
+                  <info.icon className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm text-gray-600">{info.label}</span>
+                </div>
+                <span className="text-sm font-semibold text-gray-900">{info.value}</span>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>

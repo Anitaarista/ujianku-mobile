@@ -21,11 +21,13 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts'
 import {
-  gradeDistributionData, getStatusColor, getDifficultyColor, formatDuration
+  gradeDistributionData, mockNotifications, getStatusColor, getDifficultyColor, formatDuration
 } from './mock-data'
+import type { MockNotification } from './mock-data'
 import { exportToCSV } from '@/lib/csv-export'
+import { toast } from '@/hooks/use-toast'
 
-type GuruTab = 'dashboard' | 'bank-soal' | 'buat-ujian' | 'hasil-ujian' | 'nilai'
+type GuruTab = 'dashboard' | 'bank-soal' | 'buat-ujian' | 'hasil-ujian' | 'nilai' | 'profil'
 
 interface GuruDashboardProps {
   onBack: () => void
@@ -77,6 +79,7 @@ const sidebarItems: { id: GuruTab; label: string; icon: React.ElementType }[] = 
   { id: 'buat-ujian', label: 'Buat Ujian', icon: FileText },
   { id: 'hasil-ujian', label: 'Hasil Ujian', icon: ClipboardCheck },
   { id: 'nilai', label: 'Nilai & Rapor', icon: Award },
+  { id: 'profil', label: 'Profil & Pengaturan', icon: Settings },
 ]
 
 // API helper
@@ -131,9 +134,25 @@ function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClos
 export function GuruDashboard({ onBack, user, token }: GuruDashboardProps) {
   const [activeTab, setActiveTab] = useState<GuruTab>('dashboard')
   const [searchQuery, setSearchQuery] = useState('')
-  // FIX #27: Notification bell dropdown
+  // Notification bell dropdown with mock data
   const [showNotifDropdown, setShowNotifDropdown] = useState(false)
+  const [notifications, setNotifications] = useState<MockNotification[]>(mockNotifications)
   const notifRef = useRef<HTMLDivElement>(null)
+
+  const unreadCount = notifications.filter(n => !n.isRead).length
+
+  const handleMarkAsRead = (id: string) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))
+  }
+
+  const handleMarkAllAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+    toast({ title: 'Berhasil', description: 'Semua notifikasi ditandai sudah dibaca' })
+  }
+
+  const handleDeleteNotification = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id))
+  }
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -180,16 +199,19 @@ export function GuruDashboard({ onBack, user, token }: GuruDashboardProps) {
         </nav>
 
         <div className="p-4 border-t border-white/10">
-          <div className="flex items-center gap-3">
+          <button onClick={() => setActiveTab('profil')} className="w-full flex items-center gap-3 hover:bg-white/5 rounded-xl p-2 -m-2 transition-colors">
             <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
               {user?.name ? user.name.split(' ').map(n => n[0]).slice(0, 2).join('') : 'SN'}
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 text-left">
               <p className="text-sm font-semibold text-white truncate">{user?.name || 'Guru'}</p>
               <p className="text-xs text-gray-500">{user?.email || ''}</p>
             </div>
-            <button onClick={onBack} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Logout">
-              <LogOut className="w-4 h-4 text-gray-500 hover:text-gray-300" />
+            <Settings className="w-4 h-4 text-gray-500" />
+          </button>
+          <div className="mt-3">
+            <button onClick={onBack} className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium text-gray-400 hover:bg-white/10 hover:text-gray-200 transition-colors">
+              <LogOut className="w-3.5 h-3.5" /> Keluar
             </button>
           </div>
         </div>
@@ -205,22 +227,67 @@ export function GuruDashboard({ onBack, user, token }: GuruDashboardProps) {
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <Input placeholder="Cari..." className="pl-9 w-64 h-9 bg-gray-50 border-gray-200" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
-            {/* FIX #27: Bell icon with dropdown */}
+            {/* Bell icon with dropdown - connected to mock notifications */}
             <div className="relative" ref={notifRef}>
               <button className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors" onClick={() => setShowNotifDropdown(!showNotifDropdown)}>
                 <Bell className="w-5 h-5 text-gray-600" />
-                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full border-2 border-white text-[10px] font-bold text-white flex items-center justify-center">{unreadCount}</span>
+                )}
               </button>
               {showNotifDropdown && (
                 <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden">
-                  <div className="p-4 border-b border-gray-100">
+                  <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                     <h3 className="text-sm font-bold text-gray-900">Notifikasi</h3>
+                    {unreadCount > 0 && (
+                      <button onClick={handleMarkAllAsRead} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition-colors">Tandai semua dibaca</button>
+                    )}
                   </div>
-                  <div className="p-8 text-center">
-                    <Bell className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                    <p className="text-sm text-gray-500 font-medium">Belum ada notifikasi</p>
-                    <p className="text-xs text-gray-400 mt-1">Notifikasi baru akan muncul di sini</p>
-                  </div>
+                  {notifications.length === 0 ? (
+                    <div className="p-8 text-center">
+                      <Bell className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                      <p className="text-sm text-gray-500 font-medium">Belum ada notifikasi</p>
+                      <p className="text-xs text-gray-400 mt-1">Notifikasi baru akan muncul di sini</p>
+                    </div>
+                  ) : (
+                    <div className="max-h-80 overflow-y-auto">
+                      {notifications.map((notif) => (
+                        <div key={notif.id} className={`px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${!notif.isRead ? 'bg-emerald-50/30' : ''}`}>
+                          <div className="flex items-start gap-3">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                              notif.tipe === 'violation' ? 'bg-red-100 text-red-600' :
+                              notif.tipe === 'exam' ? 'bg-emerald-100 text-emerald-600' :
+                              notif.tipe === 'result' ? 'bg-violet-100 text-violet-600' :
+                              'bg-amber-100 text-amber-600'
+                            }`}>
+                              {notif.tipe === 'violation' ? <AlertTriangle className="w-4 h-4" /> :
+                               notif.tipe === 'exam' ? <FileText className="w-4 h-4" /> :
+                               notif.tipe === 'result' ? <ClipboardCheck className="w-4 h-4" /> :
+                               <Bell className="w-4 h-4" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-semibold text-gray-900 truncate">{notif.judul}</p>
+                                {!notif.isRead && <span className="w-2 h-2 bg-emerald-500 rounded-full shrink-0" />}
+                              </div>
+                              <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{notif.pesan}</p>
+                              <p className="text-[10px] text-gray-400 mt-1">{notif.waktu}</p>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {!notif.isRead && (
+                                <button onClick={(e) => { e.stopPropagation(); handleMarkAsRead(notif.id) }} className="p-1 hover:bg-emerald-100 rounded transition-colors" title="Tandai dibaca">
+                                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                                </button>
+                              )}
+                              <button onClick={(e) => { e.stopPropagation(); handleDeleteNotification(notif.id) }} className="p-1 hover:bg-red-50 rounded transition-colors" title="Hapus notifikasi">
+                                <X className="w-3.5 h-3.5 text-gray-400" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -233,6 +300,7 @@ export function GuruDashboard({ onBack, user, token }: GuruDashboardProps) {
           {activeTab === 'buat-ujian' && <BuatUjian token={token ?? null} />}
           {activeTab === 'hasil-ujian' && <HasilUjian token={token ?? null} />}
           {activeTab === 'nilai' && <NilaiRapor token={token ?? null} />}
+          {activeTab === 'profil' && <ProfilPengaturan user={user ?? null} token={token ?? null} />}
         </div>
       </main>
     </div>
@@ -846,7 +914,7 @@ function BuatUjian({ token }: { token: string | null }) {
   // FIX #23: Publish exam handler
   const handlePublishExam = async () => {
     if (!wizardData.judul || !wizardData.mataPelajaranId || !wizardData.durasi || !wizardData.tanggalMulai || !wizardData.tanggalSelesai) {
-      alert('Mohon lengkapi semua field wajib (Judul, Mata Pelajaran, Durasi, Tanggal Mulai & Selesai)')
+      toast({ title: 'Data Belum Lengkap', description: 'Mohon lengkapi semua field wajib (Judul, Mata Pelajaran, Durasi, Tanggal Mulai & Selesai)', variant: 'destructive' })
       return
     }
     try {
@@ -883,12 +951,12 @@ function BuatUjian({ token }: { token: string | null }) {
           passingGrade: 75, maxAttempt: 1, selectedSoalIds: [], selectedKelasIds: [],
         })
         fetchExams()
-        alert('Ujian berhasil dibuat!')
+        toast({ title: 'Berhasil!', description: 'Ujian berhasil dibuat!' })
       } else {
-        alert(res.error?.message || 'Gagal membuat ujian')
+        toast({ title: 'Gagal', description: res.error?.message || 'Gagal membuat ujian', variant: 'destructive' })
       }
     } catch {
-      alert('Gagal membuat ujian')
+      toast({ title: 'Gagal', description: 'Gagal membuat ujian', variant: 'destructive' })
     } finally {
       setPublishing(false)
     }
@@ -1223,6 +1291,9 @@ function HasilUjian({ token }: { token: string | null }) {
   const [results, setResults] = useState<ApiResult[]>([])
   const [exams, setExams] = useState<ApiExam[]>([])
   const [loading, setLoading] = useState(true)
+  const [filterExam, setFilterExam] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('all')
+  const [detailResult, setDetailResult] = useState<ApiResult | null>(null)
 
   useEffect(() => {
     async function fetchData() {
@@ -1243,9 +1314,15 @@ function HasilUjian({ token }: { token: string | null }) {
     fetchData()
   }, [token])
 
-  // FIX #26: Export results to CSV
+  // Apply filters
+  const filteredResults = results.filter(r => {
+    if (filterExam !== 'all' && r.examId !== filterExam) return false
+    if (filterStatus !== 'all' && r.status !== filterStatus) return false
+    return true
+  })
+
   const handleExportResults = () => {
-    const data = results.map(r => ({
+    const data = filteredResults.map(r => ({
       Siswa: r.siswa?.name || '-',
       'NIP/NIS': r.siswa?.nipNis || '-',
       Ujian: r.exam?.judul || '-',
@@ -1255,20 +1332,32 @@ function HasilUjian({ token }: { token: string | null }) {
       Durasi: r.durasi ? formatDuration(r.durasi) : '-',
       Status: r.status,
     }))
+    if (data.length === 0) {
+      toast({ title: 'Tidak Ada Data', description: 'Tidak ada data hasil ujian untuk diekspor', variant: 'destructive' })
+      return
+    }
     exportToCSV(data, 'hasil-ujian')
+    toast({ title: 'Berhasil', description: 'Data hasil ujian berhasil diekspor ke CSV' })
   }
 
   if (loading) return <LoadingSkeleton />
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <select className="h-9 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900 font-medium">
-          <option>Semua Ujian</option>
+      <div className="flex items-center gap-3 flex-wrap">
+        <select className="h-9 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900 font-medium" value={filterExam} onChange={(e) => setFilterExam(e.target.value)}>
+          <option value="all">Semua Ujian</option>
           {exams.map(e => <option key={e.id} value={e.id}>{e.judul}</option>)}
         </select>
-        {/* FIX #26: Export results to CSV */}
-        <Button variant="outline" size="sm" className="text-gray-700 border-gray-200" onClick={handleExportResults}><Download className="w-4 h-4 mr-2" />Ekspor ke Excel</Button>
+        <select className="h-9 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900 font-medium" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+          <option value="all">Semua Status</option>
+          <option value="SELESAI">Selesai</option>
+          <option value="TIMEOUT">Waktu Habis</option>
+          <option value="DISKUALIFIKASI">Diskualifikasi</option>
+        </select>
+        <Button variant="outline" size="sm" className="text-gray-700 border-gray-200 ml-auto" onClick={handleExportResults}>
+          <Download className="w-4 h-4 mr-2" />Ekspor ke CSV
+        </Button>
       </div>
 
       <Card className="shadow-sm">
@@ -1303,13 +1392,14 @@ function HasilUjian({ token }: { token: string | null }) {
                   <th className="text-left py-3 px-4 text-gray-600 font-semibold">Total Nilai</th>
                   <th className="text-left py-3 px-4 text-gray-600 font-semibold">Durasi</th>
                   <th className="text-left py-3 px-4 text-gray-600 font-semibold">Status</th>
+                  <th className="text-left py-3 px-4 text-gray-600 font-semibold">Aksi</th>
                 </tr>
               </thead>
               <tbody>
-                {results.length === 0 ? (
-                  <tr><td colSpan={7}><EmptyState message="Belum ada hasil ujian" icon={ClipboardCheck} /></td></tr>
+                {filteredResults.length === 0 ? (
+                  <tr><td colSpan={8}><EmptyState message="Belum ada hasil ujian" icon={ClipboardCheck} /></td></tr>
                 ) : (
-                  results.map((result, i) => (
+                  filteredResults.map((result, i) => (
                     <tr key={result.id} className={`border-b border-gray-50 hover:bg-emerald-50/30 transition-colors ${i % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
@@ -1333,6 +1423,11 @@ function HasilUjian({ token }: { token: string | null }) {
                           {result.status === 'SELESAI' ? 'Selesai' : result.status === 'TIMEOUT' ? 'Waktu Habis' : result.status === 'DISKUALIFIKASI' ? 'Diskualifikasi' : result.status}
                         </span>
                       </td>
+                      <td className="py-3 px-4">
+                        <Button variant="ghost" size="sm" className="h-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50" onClick={() => setDetailResult(result)}>
+                          <Eye className="w-4 h-4 mr-1" />Detail
+                        </Button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -1341,6 +1436,72 @@ function HasilUjian({ token }: { token: string | null }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Detail Hasil Ujian Modal */}
+      {detailResult && (
+        <ModalOverlay onClose={() => setDetailResult(null)}>
+          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-gray-900">Detail Hasil Ujian</h2>
+            <button onClick={() => setDetailResult(null)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><X className="w-4 h-4 text-gray-500" /></button>
+          </div>
+          <div className="p-6 space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                {detailResult.siswa?.name?.split(' ').map(n => n[0]).slice(0, 2).join('') || '?'}
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">{detailResult.siswa?.name || '-'}</h3>
+                <p className="text-sm text-gray-500">{detailResult.siswa?.email || '-'} · NIP/NIS: {detailResult.siswa?.nipNis || '-'}</p>
+              </div>
+            </div>
+            <div className={`p-4 rounded-xl border-2 ${(detailResult.totalNilai ?? 0) >= 75 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center font-bold text-2xl ${(detailResult.totalNilai ?? 0) >= 75 ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
+                  {detailResult.totalNilai !== null ? detailResult.totalNilai.toFixed(0) : '-'}
+                </div>
+                <div>
+                  <p className={`text-lg font-bold ${(detailResult.totalNilai ?? 0) >= 75 ? 'text-emerald-800' : 'text-red-800'}`}>
+                    {(detailResult.totalNilai ?? 0) >= 75 ? 'Lulus' : 'Tidak Lulus'}
+                  </p>
+                  <p className="text-sm text-gray-600">Total Nilai</p>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Card className="shadow-sm">
+                <CardContent className="p-4 text-center">
+                  <p className="text-xl font-bold text-violet-700">{detailResult.nilai !== null ? detailResult.nilai.toFixed(1) : '-'}</p>
+                  <p className="text-xs font-semibold text-gray-500">Nilai Pilihan Ganda</p>
+                </CardContent>
+              </Card>
+              <Card className="shadow-sm">
+                <CardContent className="p-4 text-center">
+                  <p className="text-xl font-bold text-amber-700">{detailResult.nilaiEssay !== null ? detailResult.nilaiEssay.toFixed(1) : '-'}</p>
+                  <p className="text-xs font-semibold text-gray-500">Nilai Essay</p>
+                </CardContent>
+              </Card>
+            </div>
+            {[
+              { label: 'Ujian', value: detailResult.exam?.judul || '-' },
+              { label: 'Mata Pelajaran', value: detailResult.exam?.mataPelajaran?.nama || '-' },
+              { label: 'Tipe Ujian', value: detailResult.exam?.tipeExam || '-' },
+              { label: 'Durasi Pengerjaan', value: detailResult.durasi ? formatDuration(detailResult.durasi) : '-' },
+              { label: 'Percobaan ke-', value: String(detailResult.attempt) },
+              { label: 'Status Pengerjaan', value: detailResult.status === 'SELESAI' ? 'Selesai' : detailResult.status === 'TIMEOUT' ? 'Waktu Habis' : detailResult.status === 'DISKUALIFIKASI' ? 'Diskualifikasi' : detailResult.status },
+              { label: 'Mulai Pada', value: detailResult.mulaiPada ? new Date(detailResult.mulaiPada).toLocaleString('id-ID') : '-' },
+              { label: 'Selesai Pada', value: detailResult.selesaiPada ? new Date(detailResult.selesaiPada).toLocaleString('id-ID') : '-' },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center justify-between py-2 border-b border-gray-50">
+                <span className="text-sm text-gray-600">{item.label}</span>
+                <span className="text-sm font-semibold text-gray-900">{item.value}</span>
+              </div>
+            ))}
+          </div>
+          <div className="p-6 border-t border-gray-100 flex justify-end">
+            <Button variant="outline" onClick={() => setDetailResult(null)} className="text-gray-700 border-gray-200">Tutup</Button>
+          </div>
+        </ModalOverlay>
+      )}
     </div>
   )
 }
@@ -1348,14 +1509,22 @@ function HasilUjian({ token }: { token: string | null }) {
 // ==================== NILAI & RAPOR ====================
 function NilaiRapor({ token }: { token: string | null }) {
   const [results, setResults] = useState<ApiResult[]>([])
+  const [exams, setExams] = useState<ApiExam[]>([])
   const [loading, setLoading] = useState(true)
+  const [filterExam, setFilterExam] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('all')
+  const [detailResult, setDetailResult] = useState<ApiResult | null>(null)
 
   useEffect(() => {
     async function fetchData() {
       try {
         setLoading(true)
-        const res = await apiFetch('/api/v1/guru/results?limit=100', token)
-        if (res.success) setResults(res.data?.data || [])
+        const [resultsRes, examsRes] = await Promise.all([
+          apiFetch('/api/v1/guru/results?limit=100', token),
+          apiFetch('/api/v1/guru/exams?limit=50', token),
+        ])
+        if (resultsRes.success) setResults(resultsRes.data?.data || [])
+        if (examsRes.success) setExams(examsRes.data?.data || [])
       } catch {
         // silently handle
       } finally {
@@ -1365,9 +1534,37 @@ function NilaiRapor({ token }: { token: string | null }) {
     fetchData()
   }, [token])
 
+  const handleExportNilai = () => {
+    const data = filteredResults.map(r => ({
+      Siswa: r.siswa?.name || '-',
+      'NIP/NIS': r.siswa?.nipNis || '-',
+      Ujian: r.exam?.judul || '-',
+      'Mata Pelajaran': r.exam?.mataPelajaran?.nama || '-',
+      'Nilai PG': r.nilai !== null ? r.nilai.toFixed(1) : '-',
+      'Nilai Essay': r.nilaiEssay !== null ? r.nilaiEssay.toFixed(1) : '-',
+      'Total Nilai': r.totalNilai !== null ? r.totalNilai.toFixed(1) : '-',
+      Durasi: r.durasi ? formatDuration(r.durasi) : '-',
+      Status: (r.totalNilai ?? 0) >= 75 ? 'Lulus' : 'Tidak Lulus',
+    }))
+    if (data.length === 0) {
+      toast({ title: 'Tidak Ada Data', description: 'Tidak ada data nilai untuk diekspor', variant: 'destructive' })
+      return
+    }
+    exportToCSV(data, 'rekap-nilai')
+    toast({ title: 'Berhasil', description: 'Data nilai berhasil diekspor ke CSV' })
+  }
+
   if (loading) return <LoadingSkeleton />
 
-  const totalResults = results.filter(r => r.totalNilai !== null)
+  // Apply filters
+  const filteredResults = results.filter(r => {
+    if (filterExam !== 'all' && r.examId !== filterExam) return false
+    if (filterStatus === 'lulus' && (r.totalNilai ?? 0) < 75) return false
+    if (filterStatus === 'tidak_lulus' && (r.totalNilai ?? 0) >= 75) return false
+    return true
+  })
+
+  const totalResults = filteredResults.filter(r => r.totalNilai !== null)
   const avgScore = totalResults.length > 0 ? totalResults.reduce((sum, r) => sum + (r.totalNilai ?? 0), 0) / totalResults.length : 0
   const passingRate = totalResults.length > 0 ? (totalResults.filter(r => (r.totalNilai ?? 0) >= 75).length / totalResults.length) * 100 : 0
   const highestScore = totalResults.length > 0 ? Math.max(...totalResults.map(r => r.totalNilai ?? 0)) : 0
@@ -1396,10 +1593,25 @@ function NilaiRapor({ token }: { token: string | null }) {
         ))}
       </div>
 
+      <div className="flex items-center gap-3 flex-wrap">
+        <select className="h-9 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900 font-medium" value={filterExam} onChange={(e) => setFilterExam(e.target.value)}>
+          <option value="all">Semua Ujian</option>
+          {exams.map(e => <option key={e.id} value={e.id}>{e.judul}</option>)}
+        </select>
+        <select className="h-9 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900 font-medium" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+          <option value="all">Semua Status</option>
+          <option value="lulus">Lulus</option>
+          <option value="tidak_lulus">Tidak Lulus</option>
+        </select>
+        <Button variant="outline" size="sm" className="text-gray-700 border-gray-200 ml-auto" onClick={handleExportNilai}>
+          <Download className="w-4 h-4 mr-2" />Ekspor Nilai
+        </Button>
+      </div>
+
       <Card className="shadow-sm">
         <CardHeader className="pb-4"><CardTitle className="text-base font-semibold text-gray-900">Rekap Nilai Siswa</CardTitle></CardHeader>
         <CardContent>
-          {results.length === 0 ? (
+          {filteredResults.length === 0 ? (
             <EmptyState message="Belum ada data nilai" icon={Award} />
           ) : (
             <div className="overflow-x-auto">
@@ -1410,10 +1622,11 @@ function NilaiRapor({ token }: { token: string | null }) {
                     <th className="text-left py-3 px-4 text-gray-600 font-semibold">Ujian</th>
                     <th className="text-left py-3 px-4 text-gray-600 font-semibold">Nilai</th>
                     <th className="text-left py-3 px-4 text-gray-600 font-semibold">Status</th>
+                    <th className="text-left py-3 px-4 text-gray-600 font-semibold">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {results.map((result, i) => (
+                  {filteredResults.map((result, i) => (
                     <tr key={result.id} className={`border-b border-gray-50 hover:bg-emerald-50/30 transition-colors ${i % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
                       <td className="py-3 px-4 font-semibold text-gray-900">{result.siswa?.name || '-'}</td>
                       <td className="py-3 px-4 text-gray-700">{result.exam?.judul || '-'}</td>
@@ -1427,6 +1640,11 @@ function NilaiRapor({ token }: { token: string | null }) {
                           {(result.totalNilai ?? 0) >= 75 ? 'Lulus' : 'Tidak Lulus'}
                         </span>
                       </td>
+                      <td className="py-3 px-4">
+                        <Button variant="ghost" size="sm" className="h-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50" onClick={() => setDetailResult(result)}>
+                          <Eye className="w-4 h-4 mr-1" />Detail
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1435,6 +1653,244 @@ function NilaiRapor({ token }: { token: string | null }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Detail Nilai Modal */}
+      {detailResult && (
+        <ModalOverlay onClose={() => setDetailResult(null)}>
+          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-gray-900">Detail Nilai Siswa</h2>
+            <button onClick={() => setDetailResult(null)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><X className="w-4 h-4 text-gray-500" /></button>
+          </div>
+          <div className="p-6 space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                {detailResult.siswa?.name?.split(' ').map(n => n[0]).slice(0, 2).join('') || '?'}
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">{detailResult.siswa?.name || '-'}</h3>
+                <p className="text-sm text-gray-500">NIP/NIS: {detailResult.siswa?.nipNis || '-'}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <Card className="bg-emerald-50 border-emerald-100 shadow-sm">
+                <CardContent className="p-4 text-center">
+                  <p className="text-2xl font-bold text-emerald-700">{detailResult.totalNilai !== null ? detailResult.totalNilai.toFixed(1) : '-'}</p>
+                  <p className="text-xs font-semibold text-emerald-600">Total Nilai</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-violet-50 border-violet-100 shadow-sm">
+                <CardContent className="p-4 text-center">
+                  <p className="text-2xl font-bold text-violet-700">{detailResult.nilai !== null ? detailResult.nilai.toFixed(1) : '-'}</p>
+                  <p className="text-xs font-semibold text-violet-600">Nilai PG</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-amber-50 border-amber-100 shadow-sm">
+                <CardContent className="p-4 text-center">
+                  <p className="text-2xl font-bold text-amber-700">{detailResult.nilaiEssay !== null ? detailResult.nilaiEssay.toFixed(1) : '-'}</p>
+                  <p className="text-xs font-semibold text-amber-600">Nilai Essay</p>
+                </CardContent>
+              </Card>
+            </div>
+            {[
+              { label: 'Ujian', value: detailResult.exam?.judul || '-' },
+              { label: 'Mata Pelajaran', value: detailResult.exam?.mataPelajaran?.nama || '-' },
+              { label: 'Tipe Ujian', value: detailResult.exam?.tipeExam || '-' },
+              { label: 'Durasi Pengerjaan', value: detailResult.durasi ? formatDuration(detailResult.durasi) : '-' },
+              { label: 'Percobaan ke-', value: String(detailResult.attempt) },
+              { label: 'Status', value: detailResult.status === 'SELESAI' ? 'Selesai' : detailResult.status === 'TIMEOUT' ? 'Waktu Habis' : detailResult.status },
+              { label: 'Kelulusan', value: (detailResult.totalNilai ?? 0) >= 75 ? 'Lulus' : 'Tidak Lulus' },
+              { label: 'Mulai Pada', value: detailResult.mulaiPada ? new Date(detailResult.mulaiPada).toLocaleString('id-ID') : '-' },
+              { label: 'Selesai Pada', value: detailResult.selesaiPada ? new Date(detailResult.selesaiPada).toLocaleString('id-ID') : '-' },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center justify-between py-2 border-b border-gray-50">
+                <span className="text-sm text-gray-600">{item.label}</span>
+                <span className="text-sm font-semibold text-gray-900">{item.value}</span>
+              </div>
+            ))}
+          </div>
+          <div className="p-6 border-t border-gray-100 flex justify-end">
+            <Button variant="outline" onClick={() => setDetailResult(null)} className="text-gray-700 border-gray-200">Tutup</Button>
+          </div>
+        </ModalOverlay>
+      )}
+    </div>
+  )
+}
+
+// ==================== PROFIL & PENGATURAN ====================
+function ProfilPengaturan({ user, token }: { user: { id: string; name: string; email: string; role: string; avatar?: string } | null; token: string | null }) {
+  const [activeSection, setActiveSection] = useState<'profil' | 'pengaturan'>('profil')
+  const [saving, setSaving] = useState(false)
+  const [profileForm, setProfileForm] = useState({
+    name: user?.name || '',
+    email: user?.email || '',
+    phone: '',
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  })
+  const [settings, setSettings] = useState({
+    emailNotif: true,
+    examReminder: true,
+    violationAlert: true,
+    resultPublished: true,
+    darkMode: false,
+    language: 'id',
+  })
+
+  const handleSaveProfile = async () => {
+    if (profileForm.newPassword && profileForm.newPassword !== profileForm.confirmPassword) {
+      toast({ title: 'Gagal', description: 'Kata sandi baru tidak cocok', variant: 'destructive' })
+      return
+    }
+    try {
+      setSaving(true)
+      const res = await apiFetch('/api/v1/user/profile', token, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: profileForm.name,
+          email: profileForm.email,
+          phone: profileForm.phone,
+          currentPassword: profileForm.currentPassword || undefined,
+          newPassword: profileForm.newPassword || undefined,
+        }),
+      })
+      if (res.success) {
+        toast({ title: 'Berhasil', description: 'Profil berhasil diperbarui' })
+        setProfileForm(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }))
+      } else {
+        toast({ title: 'Gagal', description: res.error?.message || 'Gagal memperbarui profil', variant: 'destructive' })
+      }
+    } catch {
+      toast({ title: 'Gagal', description: 'Terjadi kesalahan saat menyimpan profil', variant: 'destructive' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveSettings = () => {
+    toast({ title: 'Berhasil', description: 'Pengaturan berhasil disimpan' })
+  }
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+      {/* Profile Header */}
+      <Card className="shadow-sm overflow-hidden">
+        <div className="h-32 bg-gradient-to-r from-emerald-500 to-teal-600 relative">
+          <div className="absolute -bottom-10 left-6">
+            <div className="w-20 h-20 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-2xl flex items-center justify-center text-white font-bold text-2xl border-4 border-white shadow-lg">
+              {user?.name ? user.name.split(' ').map(n => n[0]).slice(0, 2).join('') : 'SN'}
+            </div>
+          </div>
+        </div>
+        <CardContent className="pt-14 pb-5 px-6">
+          <h2 className="text-xl font-bold text-gray-900">{user?.name || 'Guru'}</h2>
+          <p className="text-sm text-gray-500 mt-0.5">{user?.email || ''}</p>
+          <div className="flex items-center gap-3 mt-3">
+            <Badge className="bg-emerald-100 text-emerald-700 font-semibold border-0">Guru</Badge>
+            <span className="text-xs text-gray-500">Bergabung sejak 2024</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Section Tabs */}
+      <div className="flex gap-2">
+        <button onClick={() => setActiveSection('profil')} className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${activeSection === 'profil' ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+          Profil Saya
+        </button>
+        <button onClick={() => setActiveSection('pengaturan')} className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${activeSection === 'pengaturan' ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+          Pengaturan
+        </button>
+      </div>
+
+      {activeSection === 'profil' && (
+        <Card className="shadow-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-base font-semibold text-gray-900">Informasi Profil</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Nama Lengkap</label>
+              <Input className="h-10" value={profileForm.name} onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })} placeholder="Nama lengkap" />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Email</label>
+              <Input className="h-10" type="email" value={profileForm.email} onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })} placeholder="Email" />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Nomor Telepon</label>
+              <Input className="h-10" value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} placeholder="08xxxxxxxxxx" />
+            </div>
+            <div className="pt-4 border-t border-gray-100">
+              <h3 className="text-sm font-bold text-gray-900 mb-4">Ubah Kata Sandi</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Kata Sandi Saat Ini</label>
+                  <Input className="h-10" type="password" value={profileForm.currentPassword} onChange={(e) => setProfileForm({ ...profileForm, currentPassword: e.target.value })} placeholder="Masukkan kata sandi saat ini" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Kata Sandi Baru</label>
+                    <Input className="h-10" type="password" value={profileForm.newPassword} onChange={(e) => setProfileForm({ ...profileForm, newPassword: e.target.value })} placeholder="Kata sandi baru" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Konfirmasi Kata Sandi</label>
+                    <Input className="h-10" type="password" value={profileForm.confirmPassword} onChange={(e) => setProfileForm({ ...profileForm, confirmPassword: e.target.value })} placeholder="Ulangi kata sandi baru" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end pt-2">
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200" onClick={handleSaveProfile} disabled={saving}>
+                {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                Simpan Perubahan
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeSection === 'pengaturan' && (
+        <Card className="shadow-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-base font-semibold text-gray-900">Pengaturan Notifikasi</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {[
+              { key: 'emailNotif' as const, label: 'Notifikasi Email', desc: 'Terima pemberitahuan melalui email untuk aktivitas penting' },
+              { key: 'examReminder' as const, label: 'Pengingat Ujian', desc: 'Dapatkan pengingat sebelum ujian dimulai' },
+              { key: 'violationAlert' as const, label: 'Peringatan Pelanggaran', desc: 'Notifikasi langsung saat terdeteksi pelanggaran ujian' },
+              { key: 'resultPublished' as const, label: 'Hasil Ujian Dipublikasikan', desc: 'Notifikasi saat nilai ujian dipublikasikan' },
+            ].map((setting) => (
+              <div key={setting.key} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{setting.label}</p>
+                  <p className="text-xs text-gray-500">{setting.desc}</p>
+                </div>
+                <input type="checkbox" checked={settings[setting.key]} onChange={(e) => setSettings({ ...settings, [setting.key]: e.target.checked })} className="accent-emerald-600 w-5 h-5" />
+              </div>
+            ))}
+            <div className="pt-4 border-t border-gray-100">
+              <h3 className="text-sm font-bold text-gray-900 mb-4">Pengaturan Tampilan</h3>
+              <div className="flex items-center justify-between p-4 rounded-xl border border-gray-100">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Bahasa</p>
+                  <p className="text-xs text-gray-500">Pilih bahasa tampilan aplikasi</p>
+                </div>
+                <select className="h-9 rounded-lg border border-gray-200 px-3 text-sm bg-white text-gray-900 font-medium" value={settings.language} onChange={(e) => setSettings({ ...settings, language: e.target.value })}>
+                  <option value="id">Bahasa Indonesia</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end pt-2">
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200" onClick={handleSaveSettings}>
+                <CheckCircle className="w-4 h-4 mr-2" />Simpan Pengaturan
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

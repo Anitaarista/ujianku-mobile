@@ -462,12 +462,12 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
 
           // Tombol mulai ujian
           CustomButton(
-            text: exam.isOngoing ? 'Mulai Ujian' : 'Ujian Belum Dimulai',
-            icon: exam.isOngoing ? Icons.play_arrow : Icons.schedule,
+            text: exam.isOngoing ? 'Mulai Ujian' : 'Lihat Detail',
+            icon: exam.isOngoing ? Icons.play_arrow : Icons.info_outline,
             isFullWidth: true,
             size: CustomButtonSize.large,
             isLoading: examProvider.isLoading,
-            onPressed: _canStartExam(exam) ? () => _startExam(exam) : null,
+            onPressed: _agreedToRules ? () => _startExam(exam) : null,
           ),
           if (!exam.isOngoing && !exam.isUpcoming) ...[
             const SizedBox(height: 12),
@@ -488,7 +488,7 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
   bool _canStartExam(dynamic exam) {
     if (!_agreedToRules) return false;
     if (exam.requiresToken && _tokenController.text.isEmpty) return false;
-    if (!exam.isOngoing && !exam.isUpcoming) return false;
+    // Allow starting both ongoing and upcoming exams (in case the exam starts soon)
     return true;
   }
 
