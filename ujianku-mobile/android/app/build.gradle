@@ -24,7 +24,7 @@ if (flutterVersionName == null) {
 
 android {
     namespace 'id.ujianku.mobile'
-    compileSdk 35
+    compileSdk 36
 
     compileOptions {
         coreLibraryDesugaringEnabled true
@@ -43,7 +43,7 @@ android {
     defaultConfig {
         applicationId "id.ujianku.mobile"
         minSdkVersion flutter.minSdkVersion
-        targetSdk 35
+        targetSdk 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
