@@ -69,13 +69,17 @@ jobs:
             gradle-${{ runner.os }}-
 
       - name: Decode Android signing key
-        if: (github.event.inputs.build_type == 'release' || github.event.inputs.build_type == '') && secrets.KEYSTORE_BASE64 != ''
+        if: github.event.inputs.build_type == 'release' || github.event.inputs.build_type == ''
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > ${{ env.WORKING_DIR }}/android/app/upload-keystore.jks
-          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> ${{ env.WORKING_DIR }}/android/key.properties
-          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> ${{ env.WORKING_DIR }}/android/key.properties
-          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> ${{ env.WORKING_DIR }}/android/key.properties
-          echo "storeFile=upload-keystore.jks" >> ${{ env.WORKING_DIR }}/android/key.properties
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > ${{ env.WORKING_DIR }}/android/app/upload-keystore.jks
+            echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> ${{ env.WORKING_DIR }}/android/key.properties
+            echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> ${{ env.WORKING_DIR }}/android/key.properties
+            echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> ${{ env.WORKING_DIR }}/android/key.properties
+            echo "storeFile=upload-keystore.jks" >> ${{ env.WORKING_DIR }}/android/key.properties
+          else
+            echo "No keystore secrets found, using debug signing"
+          fi
         shell: bash
 
       - name: Install dependencies
