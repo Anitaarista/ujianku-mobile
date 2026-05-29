@@ -1,0 +1,129 @@
+name: Build Flutter APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/build-flutter.yml'
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type (release or debug)'
+        required: false
+        default: 'release'
+
+env:
+  FLUTTER_VERSION: '3.27.1'
+  JAVA_VERSION: '17'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: 'gradle'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Cache Flutter pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            .dart_tool
+            .pub-cache
+            ~/.pub-cache
+          key: flutter-pub-${{ runner.os }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            flutter-pub-${{ runner.os }}-
+
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            android/.gradle
+            android/build
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Decode Android signing key
+        if: github.event.inputs.build_type == 'release' || github.event.inputs.build_type == ''
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
+          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+          echo "storeFile=upload-keystore.jks" >> android/key.properties
+        shell: bash
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run Flutter analyzer
+        run: flutter analyze --no-fatal-infos || true
+
+      - name: Build APK (Release)
+        if: github.event.inputs.build_type == 'release' || github.event.inputs.build_type == ''
+        run: flutter build apk --release
+
+      - name: Build APK (Debug)
+        if: github.event.inputs.build_type == 'debug'
+        run: flutter build apk --debug
+
+      - name: Determine APK path
+        id: apk
+        run: |
+          if [ "${{ github.event.inputs.build_type }}" = "debug" ]; then
+            echo "path=build/app/outputs/flutter-apk/app-debug.apk" >> $GITHUB_OUTPUT
+            echo "suffix=-debug" >> $GITHUB_OUTPUT
+          else
+            echo "path=build/app/outputs/flutter-apk/app-release.apk" >> $GITHUB_OUTPUT
+            echo "suffix=" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ujianku${{ steps.apk.outputs.suffix }}-apk
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: github.event.inputs.build_type == 'release' || github.event.inputs.build_type == ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: UjianKu v1.0.${{ github.run_number }}
+          files: ${{ steps.apk.outputs.path }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+
+      - name: Clean up signing key
+        if: always()
+        run: |
+          rm -f android/app/upload-keystore.jks
+          rm -f android/key.properties
+        shell: bash
